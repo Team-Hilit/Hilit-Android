@@ -77,7 +77,7 @@ class InterviewScreenEffectHandler
                 )
             }.onFailure { error ->
                 if (error is CancellationException) throw error
-                onIntent(InterviewIntent.ReportMicrophoneFailure)
+                onIntent(InterviewIntent.ReportRecordingFailure)
             }
         }
 
@@ -173,7 +173,7 @@ class InterviewScreenEffectHandler
                 ) = Unit
 
                 override fun onFailure(cause: Throwable) {
-                    onIntent(InterviewIntent.ReportMicrophoneFailure)
+                    onIntent(InterviewIntent.ReportRecordingFailure)
                 }
             }
 

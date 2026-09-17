@@ -33,6 +33,7 @@ import com.dminus14.app.core.permission.rememberAppSettingsLauncher
 import com.dminus14.app.feature.interview.api.InterviewErrorType
 import com.dminus14.app.feature.interview.component.InterviewAbortModal
 import com.dminus14.app.feature.interview.component.InterviewCameraPreview
+import com.dminus14.app.feature.interview.component.InterviewFinalizationFailureModal
 import com.dminus14.app.feature.interview.component.InterviewFinishModal
 import com.dminus14.app.feature.interview.component.InterviewMeteredUploadModal
 import com.dminus14.app.feature.interview.interview.layer.InterviewScreenBaseLayer
@@ -300,6 +301,8 @@ fun InterviewScreen(
 
                 InterviewEffect.PermissionDeniedExitRequested,
                 InterviewEffect.PrerequisiteMissing,
+                InterviewEffect.FatalExitConfirmed,
+                InterviewEffect.FinalizationExitConfirmed,
                 -> {
                     onNavigateHome()
                 }
@@ -355,6 +358,12 @@ fun InterviewScreen(
         InterviewMeteredUploadModal(
             onUseMobileData = { viewModel.onIntent(InterviewIntent.ConfirmMeteredUpload) },
             onWaitForWifi = { viewModel.onIntent(InterviewIntent.DismissMeteredUpload) },
+        )
+    }
+    if (state.finalizationFailure != null) {
+        InterviewFinalizationFailureModal(
+            onExitClick = { viewModel.onIntent(InterviewIntent.ClickExitFinalization) },
+            onRetryClick = { viewModel.onIntent(InterviewIntent.ClickRetryFinalization) },
         )
     }
 }

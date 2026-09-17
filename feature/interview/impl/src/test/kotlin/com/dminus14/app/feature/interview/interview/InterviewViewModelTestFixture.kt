@@ -1,5 +1,6 @@
 package com.dminus14.app.feature.interview.interview
 
+import com.dminus14.app.core.common.modal.GlobalModalResult
 import com.dminus14.app.domain.model.InterviewAbandon
 import com.dminus14.app.domain.model.InterviewMediaFileRef
 import com.dminus14.app.domain.model.InterviewMediaManifest
@@ -69,6 +70,11 @@ internal class InterviewViewModelTestFixture {
     val submittedCommands = mutableListOf<SubmitInterviewAnswerCommand>()
     val deletedMedia = mutableListOf<InterviewMediaFileRef>()
     val uploadTasks = mutableMapOf<String, InterviewUploadTask>()
+    val recoveryStore = InterviewRecoveryStore()
+    var saveManifestFailure: Throwable? = null
+    var successfulManifestSavesBeforeFailure: Int = 0
+    var fatalPromptResult: GlobalModalResult = GlobalModalResult.Confirm
+    var fatalPromptCount = 0
     private var mediaSequence = 0
 
     val clock =
@@ -124,6 +130,10 @@ internal class InterviewViewModelTestFixture {
                 }
 
                 "saveManifest" -> {
+                    saveManifestFailure?.let { failure ->
+                        if (successfulManifestSavesBeforeFailure == 0) throw failure
+                        successfulManifestSavesBeforeFailure -= 1
+                    }
                     val manifest = args[0] as InterviewMediaManifest
                     Unit.also { manifests[manifest.sessionId] = manifest }
                 }
@@ -259,9 +269,16 @@ internal class InterviewViewModelTestFixture {
             savePendingAnswer = SavePendingInterviewAnswerUseCase(localRepository),
             saveWrapUpRange = SaveInterviewWrapUpRangeUseCase(localRepository),
             deleteSession = DeleteInterviewSessionUseCase(localRepository),
-            recoveryStore = InterviewRecoveryStore(),
+            recoveryStore = recoveryStore,
             timerCoordinator = InterviewTimerCoordinator(),
             turnStateMachine = InterviewTurnStateMachine(),
+            fatalExitPrompt =
+                object : InterviewFatalExitPrompt() {
+                    override suspend fun show(): GlobalModalResult {
+                        fatalPromptCount += 1
+                        return fatalPromptResult
+                    }
+                },
         )
     }
 
