@@ -70,7 +70,9 @@ class InterviewLocalRepositoryImpl
 
         override suspend fun handoffUploadTask(task: InterviewUploadTask) {
             withContext(Dispatchers.IO) {
-                uploadTaskStore.write(task)
+                if (uploadTaskStore.read(task.uploadTaskId) != task) {
+                    uploadTaskStore.write(task)
+                }
                 fileStore.handoff(task.sessionId, task.uploadTaskId)
             }
             progressStore.clear()
