@@ -29,8 +29,8 @@ internal object BuildConfig {
     val KOTLIN_JVM_TARGET = JvmTarget.fromTarget(JVM_VERSION.toString())
 
     /** `:app` 배포 산출물의 version code다. */
-    const val APPLICATION_VERSION_CODE = 13
+    const val APPLICATION_VERSION_CODE = 16
 
     /** `:app` 배포 산출물의 version name이다. */
-    const val APPLICATION_VERSION_NAME = "1.0.0-13"
+    const val APPLICATION_VERSION_NAME = "1.0.0-16"
 }
