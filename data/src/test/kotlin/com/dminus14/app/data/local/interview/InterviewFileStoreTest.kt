@@ -28,7 +28,7 @@ class InterviewFileStoreTest {
             .writeText("synthetic", Charsets.UTF_8)
         target.mkdirs()
         target.resolve("task.json").writeText("{}", Charsets.UTF_8)
-        movedDirectory.renameTo(target.resolve(movedDirectory.name))
+        assertTrue(movedDirectory.renameTo(target.resolve(movedDirectory.name)))
 
         store.handoff(SESSION_ID, uploadTaskId)
 

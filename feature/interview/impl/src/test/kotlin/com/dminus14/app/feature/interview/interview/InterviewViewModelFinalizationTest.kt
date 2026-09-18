@@ -102,6 +102,32 @@ class InterviewViewModelFinalizationTest {
         }
 
     @Test
+    fun `마무리 범위 저장 실패는 녹화를 중지하고 치명적 이탈로 전환한다`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val fixture = InterviewViewModelTestFixture()
+            val segment = wrapUpSegment()
+            fixture.manifests[InterviewViewModelTestFixture.SESSION_ID] = manifest(segment)
+            val viewModel = fixture.createViewModel()
+            val effects = mutableListOf<InterviewEffect>()
+            backgroundScope.launch { viewModel.effect.toList(effects) }
+
+            enterFinalization(viewModel, fixture, reportGenerating = false)
+            fixture.saveManifestFailure = IllegalStateException("synthetic save failure")
+            viewModel.onIntent(InterviewIntent.ReportWrapUpPlaybackCompleted)
+            runCurrent()
+
+            assertEquals(1, fixture.fatalPromptCount)
+            assertEquals(1, effects.count { it == InterviewEffect.StopRecordingSegment })
+            assertEquals(1, effects.count { it == InterviewEffect.FatalExitConfirmed })
+
+            fixture.saveManifestFailure = null
+            viewModel.onIntent(InterviewIntent.ReportRecordingSegmentFinalized(segment))
+            runCurrent()
+
+            assertEquals(0, effects.filterIsInstance<InterviewEffect.InterviewEnded>().size)
+        }
+
+    @Test
     fun `업로드 인계 실패를 재시도하면 마지막 네트워크 정책을 다시 사용한다`() =
         runTest(mainDispatcherRule.dispatcher) {
             val fixture = InterviewViewModelTestFixture()

@@ -985,7 +985,10 @@ class InterviewViewModel
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: Exception) {
-                    emitGlobalError(GlobalAppEvent.ShowUnknownError)
+                    isWrapUpRecording = false
+                    finalizationWatchdogJob?.cancel()
+                    finalizationWatchdogJob = null
+                    beginFatalExit()
                 } finally {
                     sendEffect(InterviewEffect.StopRecordingSegment)
                 }
