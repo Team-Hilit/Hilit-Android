@@ -42,12 +42,24 @@ class InterviewTurnStateMachine
             isSubmitting = false
         }
 
-        fun queueEnd(request: InterviewAnswerEndRequest) {
-            if (pendingEndRequest == null) pendingEndRequest = request
+        /** 최초 종료 요청만 보존하며 이후 요청은 기존 종료 유형을 바꾸지 않는다. */
+        fun requestEnd(request: InterviewAnswerEndRequest): Boolean {
+            if (pendingEndRequest != null) return false
+            pendingEndRequest = request
+            return true
         }
 
-        fun consumePendingEnd(): InterviewAnswerEndRequest? =
-            pendingEndRequest.also { pendingEndRequest = null }
+        /** 제출 실패 뒤 busy 상태만 해제하고 최초 종료 의도는 세션 복구를 위해 유지한다. */
+        fun abortSubmission() {
+            isSubmitting = false
+            temporaryFailureCount = 0
+        }
+
+        /** 서버 terminal 결과 처리를 완료한 뒤 종료 의도를 제거한다. */
+        fun completeTerminal() {
+            abortSubmission()
+            pendingEndRequest = null
+        }
 
         enum class TemporaryFailureAction { RETRY_AUTOMATICALLY, REQUIRE_USER_ACTION }
     }

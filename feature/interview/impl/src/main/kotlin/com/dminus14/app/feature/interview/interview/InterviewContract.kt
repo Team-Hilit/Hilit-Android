@@ -3,7 +3,6 @@ package com.dminus14.app.feature.interview.interview
 import com.dminus14.app.core.common.mvi.MviEffect
 import com.dminus14.app.core.common.mvi.MviIntent
 import com.dminus14.app.core.common.mvi.MviState
-import com.dminus14.app.domain.model.InterviewAnswerEndRequest
 import com.dminus14.app.domain.model.InterviewMediaFileRef
 import com.dminus14.app.domain.model.InterviewMediaSegment
 import com.dminus14.app.domain.model.InterviewMediaSegmentType
@@ -34,6 +33,13 @@ enum class InterviewPermission { CAMERA, MICROPHONE }
  * [ABANDONED]는 오류 화면에서 A7 중단이 확정된 흐름이다.
  */
 enum class InterviewCompletionReason { COMPLETED, ABANDONED }
+
+/** 서버 종료 뒤 로컬 마무리 단계에서 사용자가 복구할 수 있는 실패 유형이다. */
+enum class InterviewFinalizationFailure {
+    RECORDING_FINALIZATION_TIMEOUT,
+    RECORDING_FAILURE,
+    UPLOAD_HANDOFF_FAILURE,
+}
 
 sealed interface InterviewIntent : MviIntent {
     data object LoadInterview : InterviewIntent
@@ -104,6 +110,8 @@ sealed interface InterviewIntent : MviIntent {
 
     data object ReportAnswerAudioMergeFailure : InterviewIntent
 
+    data object ReportRecordingFailure : InterviewIntent
+
     data object ClickFinishInterview : InterviewIntent
 
     data object ConfirmFinishInterview : InterviewIntent
@@ -132,6 +140,10 @@ sealed interface InterviewIntent : MviIntent {
 
     data object ReportVideoUploadEnqueueFailure : InterviewIntent
 
+    data object ClickRetryFinalization : InterviewIntent
+
+    data object ClickExitFinalization : InterviewIntent
+
     data object ReportWrapUpPlaybackCompleted : InterviewIntent
 
     data object ReportWrapUpPlaybackFailure : InterviewIntent
@@ -158,13 +170,13 @@ data class InterviewState(
     val hasSpeechStarted: Boolean = false,
     val isQuestionAudioRetryVisible: Boolean = false,
     val isRequestInFlight: Boolean = false,
-    val pendingEndRequest: InterviewAnswerEndRequest? = null,
     val showFinishConfirmation: Boolean = false,
     val showEarlyExitWarning: Boolean = false,
     val showMeteredUploadConfirmation: Boolean = false,
     val isUploadHandoffInProgress: Boolean = false,
     val isUploadEnqueued: Boolean = false,
     val reportGenerating: Boolean = false,
+    val finalizationFailure: InterviewFinalizationFailure? = null,
 ) : MviState {
     val elapsedSeconds: Int
         get() = (elapsedMillis / 1_000L).toInt()
@@ -256,6 +268,10 @@ sealed interface InterviewEffect : MviEffect {
     data object PermissionDeniedExitRequested : InterviewEffect
 
     data object PrerequisiteMissing : InterviewEffect
+
+    data object FatalExitConfirmed : InterviewEffect
+
+    data object FinalizationExitConfirmed : InterviewEffect
 
     data class InterviewEnded(
         val reason: InterviewCompletionReason,

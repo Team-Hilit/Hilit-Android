@@ -17,4 +17,5 @@ object InterviewConstants {
     const val SILENCE_AMPLITUDE: Double = 0.03
     const val SPEECH_START_SAMPLE_COUNT: Int = 2
     const val ANSWER_SILENCE_MILLIS: Long = 10_000L
+    const val FINALIZATION_WATCHDOG_MILLIS: Long = 15_000L
 }

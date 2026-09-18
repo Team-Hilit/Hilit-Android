@@ -54,8 +54,9 @@ class InterviewScreenEffectHandler
             countdownTone.startTone(ToneGenerator.TONE_PROP_BEEP, COUNTDOWN_TONE_DURATION_MILLIS)
         }
 
-        /** Screen이 컴포지션에서 제거될 때 전용 네이티브 오디오 자원을 해제한다. */
+        /** Screen이 컴포지션에서 제거될 때 재생을 중지하고 전용 네이티브 오디오 자원을 해제한다. */
         fun release() {
+            audioPlayer.stop()
             countdownTone.release()
         }
 
@@ -77,7 +78,7 @@ class InterviewScreenEffectHandler
                 )
             }.onFailure { error ->
                 if (error is CancellationException) throw error
-                onIntent(InterviewIntent.ReportMicrophoneFailure)
+                onIntent(InterviewIntent.ReportRecordingFailure)
             }
         }
 
@@ -173,7 +174,7 @@ class InterviewScreenEffectHandler
                 ) = Unit
 
                 override fun onFailure(cause: Throwable) {
-                    onIntent(InterviewIntent.ReportMicrophoneFailure)
+                    onIntent(InterviewIntent.ReportRecordingFailure)
                 }
             }
 

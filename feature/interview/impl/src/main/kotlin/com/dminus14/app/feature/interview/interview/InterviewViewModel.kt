@@ -3,6 +3,7 @@ package com.dminus14.app.feature.interview.interview
 import androidx.lifecycle.viewModelScope
 import com.dminus14.app.core.common.event.GlobalAppEvent
 import com.dminus14.app.core.common.event.GlobalErrorHandler
+import com.dminus14.app.core.common.modal.GlobalModalResult
 import com.dminus14.app.core.common.mvi.MviViewModel
 import com.dminus14.app.domain.exception.AiTemporarilyUnavailableException
 import com.dminus14.app.domain.exception.AnswerAlreadySubmittedException
@@ -35,6 +36,7 @@ import com.dminus14.app.domain.usecase.SubmitAnswerUseCase
 import com.dminus14.app.feature.interview.InterviewConstants
 import com.dminus14.app.feature.interview.api.InterviewErrorType
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -70,6 +72,7 @@ class InterviewViewModel
         private val recoveryStore: InterviewRecoveryStore,
         private val timerCoordinator: InterviewTimerCoordinator,
         private val turnStateMachine: InterviewTurnStateMachine,
+        private val fatalExitPrompt: InterviewFatalExitPrompt,
     ) : MviViewModel<InterviewIntent, InterviewState, InterviewEffect>(InterviewState()) {
         private var preparationJob: Job? = null
         private var preparationStageJob: Job? = null
@@ -89,6 +92,12 @@ class InterviewViewModel
         private var completionReason = InterviewCompletionReason.COMPLETED
         private var wrapUpStartedAtMillis: Long? = null
         private var isWrapUpRecording = false
+        private var isWrapUpRetryPending = false
+        private var finalizationWatchdogJob: Job? = null
+        private var fatalExitJob: Job? = null
+        private var wrapUpPayload: String? = null
+        private var lastUploadNetworkPolicy: InterviewUploadNetworkPolicy? = null
+        private var isFinalOutcomeEmitted = false
 
         @Suppress("CyclomaticComplexMethod")
         override fun onIntent(intent: InterviewIntent) {
@@ -218,8 +227,14 @@ class InterviewViewModel
                     sendEffect(InterviewEffect.NavigateToError(InterviewErrorType.MIC_DEVICE))
                 }
 
+                InterviewIntent.ReportRecordingFailure -> {
+                    onRecordingFailure()
+                }
+
                 InterviewIntent.ClickFinishInterview -> {
-                    reduce { copy(showFinishConfirmation = true) }
+                    if (canOpenEndModal()) {
+                        reduce { copy(showFinishConfirmation = true) }
+                    }
                 }
 
                 InterviewIntent.ConfirmFinishInterview -> {
@@ -232,7 +247,9 @@ class InterviewViewModel
                 }
 
                 InterviewIntent.ClickExitInterview -> {
-                    reduce { copy(showEarlyExitWarning = true) }
+                    if (canOpenEndModal()) {
+                        reduce { copy(showEarlyExitWarning = true) }
+                    }
                 }
 
                 InterviewIntent.ConfirmEarlyExit -> {
@@ -274,8 +291,23 @@ class InterviewViewModel
                 }
 
                 InterviewIntent.ReportVideoUploadEnqueueFailure -> {
-                    reduce { copy(isUploadHandoffInProgress = false) }
-                    emitGlobalError(GlobalAppEvent.ShowUnknownError)
+                    if (!isFinalOutcomeEmitted) {
+                        reduce {
+                            copy(
+                                isUploadHandoffInProgress = false,
+                                finalizationFailure =
+                                    InterviewFinalizationFailure.UPLOAD_HANDOFF_FAILURE,
+                            )
+                        }
+                    }
+                }
+
+                InterviewIntent.ClickRetryFinalization -> {
+                    retryFinalization()
+                }
+
+                InterviewIntent.ClickExitFinalization -> {
+                    exitFinalization()
                 }
 
                 InterviewIntent.ReportWrapUpPlaybackCompleted,
@@ -579,7 +611,12 @@ class InterviewViewModel
                         state.value.screenState == InterviewScreenState.FINISHING &&
                         isWrapUpRecording -> {
                         isWrapUpRecording = false
-                        completeInterview()
+                        finalizationWatchdogJob?.cancel()
+                        finalizationWatchdogJob = null
+                        reduce { copy(finalizationFailure = null) }
+                        if (!restartPendingWrapUpRecording()) {
+                            completeInterview()
+                        }
                     }
 
                     segment.type == InterviewMediaSegmentType.QUESTION_VIDEO &&
@@ -664,7 +701,10 @@ class InterviewViewModel
                 val sessionId = state.value.sessionId ?: return@launch
                 finalizeMediaSegment(sessionId, audioSegment.sequence, state.value.elapsedMillis)
                 val command =
-                    createSubmitCommand(audioSegment.mediaRef, state.value.pendingEndRequest)
+                    createSubmitCommand(
+                        audioSegment.mediaRef,
+                        turnStateMachine.pendingEndRequest,
+                    )
                 submit(command)
             }
         }
@@ -693,8 +733,7 @@ class InterviewViewModel
             if (!turnStateMachine.beginSubmission()) return
             viewModelScope.launch {
                 savePendingAnswer(command).onFailure {
-                    turnStateMachine.finishSubmission()
-                    emitGlobalError(GlobalAppEvent.ShowUnknownError)
+                    beginFatalExit()
                     return@launch
                 }
                 submitAnswer(command)
@@ -702,7 +741,7 @@ class InterviewViewModel
                         turnStateMachine.finishSubmission()
                         command.audioFile?.let { deleteMediaFile(it) }
                         savePendingAnswer(null)
-                        handleSubmitResult(result)
+                        handleSubmitResult(command, result)
                     }.onFailure { error -> handleSubmitFailure(command, error) }
             }
         }
@@ -720,7 +759,10 @@ class InterviewViewModel
                         }
 
                         InterviewTurnStateMachine.TemporaryFailureAction.REQUIRE_USER_ACTION -> {
-                            savePendingAnswer(command)
+                            if (savePendingAnswer(command).isFailure) {
+                                beginFatalExit()
+                                return
+                            }
                             reduce { copy(isRequestInFlight = false) }
                             sendEffect(
                                 InterviewEffect.NavigateToError(
@@ -734,54 +776,68 @@ class InterviewViewModel
                 is AnswerAlreadySubmittedException,
                 is NetworkUnavailableException,
                 -> {
-                    savePendingAnswer(command)
+                    if (savePendingAnswer(command).isFailure) {
+                        beginFatalExit()
+                        return
+                    }
+                    turnStateMachine.abortSubmission()
                     reduce { copy(isRequestInFlight = false) }
                     sendEffect(InterviewEffect.NavigateToError(InterviewErrorType.NETWORK))
                 }
 
                 is ServerException -> {
+                    clearSubmissionBusyState()
                     emitGlobalError(GlobalAppEvent.ShowServerErrorAndExit)
                 }
 
                 else -> {
-                    emitGlobalError(GlobalAppEvent.ShowUnknownError)
+                    beginFatalExit()
                 }
             }
         }
 
-        private fun handleSubmitResult(result: SubmitAnswerResult) {
+        private fun handleSubmitResult(
+            command: SubmitInterviewAnswerCommand,
+            result: SubmitAnswerResult,
+        ) {
             if (result.sessionEnded) {
                 when (result.endType) {
                     InterviewEndType.SttReset -> {
+                        turnStateMachine.completeTerminal()
                         reduce { copy(isRequestInFlight = false) }
                         sendEffect(InterviewEffect.NavigateToError(InterviewErrorType.STT))
                     }
 
                     is InterviewEndType.Unknown -> {
-                        emitGlobalError(GlobalAppEvent.ShowUnknownError)
+                        beginFatalExit()
                     }
 
                     else -> {
+                        turnStateMachine.completeTerminal()
                         beginFinishing(result.wrapUpMessage?.ttsAudio, result.reportGenerating)
                     }
                 }
                 return
             }
 
-            val nextQuestion = result.nextQuestion
-            if (nextQuestion == null) {
-                emitGlobalError(GlobalAppEvent.ShowUnknownError)
+            if (command.endType != null) {
+                beginFatalExit()
                 return
             }
-            val pendingEnd = turnStateMachine.consumePendingEnd()
+
+            val nextQuestion = result.nextQuestion
+            if (nextQuestion == null) {
+                beginFatalExit()
+                return
+            }
             reduce {
                 copy(
                     questionId = nextQuestion.questionId,
                     isRequestInFlight = false,
-                    pendingEndRequest = pendingEnd,
                 )
             }
             resetTimeline()
+            val pendingEnd = turnStateMachine.pendingEndRequest
             if (pendingEnd != null) {
                 submitEndWithoutAudio(pendingEnd)
             } else {
@@ -812,12 +868,19 @@ class InterviewViewModel
 
         private fun requestEnd(request: InterviewAnswerEndRequest) {
             val current = state.value
+            if (current.screenState == InterviewScreenState.FINISHING) return
+            if (!turnStateMachine.requestEnd(request)) return
+            if (request == InterviewAnswerEndRequest.HardCap) {
+                reduce {
+                    copy(
+                        showFinishConfirmation = false,
+                        showEarlyExitWarning = false,
+                    )
+                }
+            }
             if (current.isRequestInFlight || turnStateMachine.isSubmitting) {
-                turnStateMachine.queueEnd(request)
-                reduce { copy(pendingEndRequest = request) }
                 return
             }
-            reduce { copy(pendingEndRequest = request) }
             when (current.screenState) {
                 InterviewScreenState.ANSWER_RECORDING -> {
                     finishAnswer(requireSpeech = false)
@@ -836,7 +899,7 @@ class InterviewViewModel
                 }
 
                 InterviewScreenState.ANSWER_SUBMITTING -> {
-                    turnStateMachine.queueEnd(request)
+                    Unit
                 }
 
                 InterviewScreenState.FINISHING -> {
@@ -872,7 +935,6 @@ class InterviewViewModel
                 copy(
                     screenState = InterviewScreenState.ANSWER_SUBMITTING,
                     isRequestInFlight = true,
-                    pendingEndRequest = request,
                 )
             }
             submit(createSubmitCommand(audioRef = null, endRequest = request))
@@ -882,66 +944,206 @@ class InterviewViewModel
             wrapUpPayload: String?,
             reportGenerating: Boolean,
         ) {
+            this.wrapUpPayload = wrapUpPayload
             reduce {
                 copy(
                     screenState = InterviewScreenState.FINISHING,
                     isRequestInFlight = false,
                     reportGenerating = reportGenerating,
+                    showFinishConfirmation = false,
+                    showEarlyExitWarning = false,
+                    finalizationFailure = null,
                 )
             }
             if (wrapUpPayload.isNullOrBlank()) {
                 completeInterview()
             } else {
-                val sessionId = state.value.sessionId ?: return
-                wrapUpStartedAtMillis = state.value.elapsedMillis
-                isWrapUpRecording = true
-                sendEffect(
-                    InterviewEffect.StartRecordingSegment(
-                        sessionId = sessionId,
-                        type = InterviewMediaSegmentType.QUESTION_VIDEO,
-                        questionId = null,
-                        startedAtMillis = state.value.elapsedMillis,
-                    ),
-                )
-                sendEffect(InterviewEffect.PlayWrapUpMessage(wrapUpPayload))
+                startWrapUpRecording(wrapUpPayload)
             }
         }
 
+        private fun startWrapUpRecording(payload: String) {
+            val sessionId = state.value.sessionId ?: return
+            wrapUpStartedAtMillis = state.value.elapsedMillis
+            isWrapUpRecording = true
+            startFinalizationWatchdog()
+            sendEffect(
+                InterviewEffect.StartRecordingSegment(
+                    sessionId = sessionId,
+                    type = InterviewMediaSegmentType.QUESTION_VIDEO,
+                    questionId = null,
+                    startedAtMillis = state.value.elapsedMillis,
+                ),
+            )
+            sendEffect(InterviewEffect.PlayWrapUpMessage(payload))
+        }
+
+        @Suppress("TooGenericExceptionCaught")
         private fun finishWrapUpPlayback() {
             val sessionId = state.value.sessionId ?: return
             val startMillis = wrapUpStartedAtMillis ?: state.value.elapsedMillis
             viewModelScope.launch {
-                saveWrapUpRange(sessionId, startMillis, state.value.elapsedMillis)
-                sendEffect(InterviewEffect.StopRecordingSegment)
+                try {
+                    saveWrapUpRange(sessionId, startMillis, state.value.elapsedMillis)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    isWrapUpRecording = false
+                    finalizationWatchdogJob?.cancel()
+                    finalizationWatchdogJob = null
+                    beginFatalExit()
+                } finally {
+                    sendEffect(InterviewEffect.StopRecordingSegment)
+                }
             }
         }
 
         private fun completeInterview() {
+            if (isFinalOutcomeEmitted) return
             timerJob?.cancel()
             val sessionId = state.value.sessionId ?: return
             if (state.value.reportGenerating) {
                 reduce { copy(isUploadHandoffInProgress = true) }
                 sendEffect(InterviewEffect.RequestUploadNotificationPermission)
             } else {
-                sendEffect(InterviewEffect.InterviewEnded(completionReason, sessionId))
+                emitFinalOutcome(InterviewEffect.InterviewEnded(completionReason, sessionId))
             }
         }
 
         private fun enqueueUpload(policy: InterviewUploadNetworkPolicy) {
+            if (isFinalOutcomeEmitted) return
             val sessionId = state.value.sessionId ?: return
-            reduce { copy(isUploadHandoffInProgress = true) }
+            lastUploadNetworkPolicy = policy
+            reduce {
+                copy(
+                    isUploadHandoffInProgress = true,
+                    finalizationFailure = null,
+                )
+            }
             sendEffect(InterviewEffect.EnqueueVideoUpload(sessionId, policy))
         }
 
         private fun finishUploadHandoff() {
+            if (isFinalOutcomeEmitted) return
             val sessionId = state.value.sessionId ?: return
             reduce {
                 copy(
                     isUploadHandoffInProgress = false,
                     isUploadEnqueued = true,
+                    finalizationFailure = null,
                 )
             }
-            sendEffect(InterviewEffect.InterviewEnded(completionReason, sessionId))
+            emitFinalOutcome(InterviewEffect.InterviewEnded(completionReason, sessionId))
+        }
+
+        private fun canOpenEndModal(): Boolean =
+            turnStateMachine.pendingEndRequest == null &&
+                state.value.screenState != InterviewScreenState.FINISHING
+
+        private fun startFinalizationWatchdog() {
+            finalizationWatchdogJob?.cancel()
+            finalizationWatchdogJob =
+                viewModelScope.launch {
+                    delay(InterviewConstants.FINALIZATION_WATCHDOG_MILLIS)
+                    if (!isFinalOutcomeEmitted && isWrapUpRecording) {
+                        reduce {
+                            copy(
+                                finalizationFailure =
+                                    InterviewFinalizationFailure.RECORDING_FINALIZATION_TIMEOUT,
+                            )
+                        }
+                        sendEffect(InterviewEffect.StopRecordingSegment)
+                    }
+                }
+        }
+
+        private fun onRecordingFailure() {
+            if (state.value.screenState != InterviewScreenState.FINISHING) {
+                sendEffect(InterviewEffect.NavigateToError(InterviewErrorType.MIC_DEVICE))
+                return
+            }
+            if (isFinalOutcomeEmitted) return
+            isWrapUpRecording = false
+            finalizationWatchdogJob?.cancel()
+            finalizationWatchdogJob = null
+            if (restartPendingWrapUpRecording()) return
+            reduce {
+                copy(finalizationFailure = InterviewFinalizationFailure.RECORDING_FAILURE)
+            }
+        }
+
+        private fun retryFinalization() {
+            if (isFinalOutcomeEmitted) return
+            when (state.value.finalizationFailure) {
+                InterviewFinalizationFailure.RECORDING_FINALIZATION_TIMEOUT -> {
+                    isWrapUpRetryPending = true
+                    reduce { copy(finalizationFailure = null) }
+                }
+
+                InterviewFinalizationFailure.RECORDING_FAILURE -> {
+                    val payload = wrapUpPayload ?: return
+                    reduce { copy(finalizationFailure = null) }
+                    startWrapUpRecording(payload)
+                }
+
+                InterviewFinalizationFailure.UPLOAD_HANDOFF_FAILURE -> {
+                    val policy = lastUploadNetworkPolicy ?: return
+                    enqueueUpload(policy)
+                }
+
+                null -> {
+                    Unit
+                }
+            }
+        }
+
+        private fun restartPendingWrapUpRecording(): Boolean {
+            if (!isWrapUpRetryPending) return false
+            isWrapUpRetryPending = false
+            val payload = wrapUpPayload ?: return false
+            startWrapUpRecording(payload)
+            return true
+        }
+
+        private fun exitFinalization() {
+            if (state.value.finalizationFailure == null || isFinalOutcomeEmitted) return
+            emitFinalOutcome(InterviewEffect.FinalizationExitConfirmed)
+        }
+
+        private fun emitFinalOutcome(effect: InterviewEffect) {
+            if (isFinalOutcomeEmitted) return
+            isFinalOutcomeEmitted = true
+            finalizationWatchdogJob?.cancel()
+            finalizationWatchdogJob = null
+            reduce {
+                copy(
+                    isUploadHandoffInProgress = false,
+                    finalizationFailure = null,
+                )
+            }
+            sendEffect(effect)
+        }
+
+        private fun clearSubmissionBusyState() {
+            turnStateMachine.abortSubmission()
+            reduce { copy(isRequestInFlight = false) }
+        }
+
+        private fun beginFatalExit() {
+            clearSubmissionBusyState()
+            reduce {
+                copy(
+                    showFinishConfirmation = false,
+                    showEarlyExitWarning = false,
+                )
+            }
+            if (fatalExitJob != null) return
+            fatalExitJob =
+                viewModelScope.launch {
+                    if (fatalExitPrompt.show() == GlobalModalResult.Confirm) {
+                        sendEffect(InterviewEffect.FatalExitConfirmed)
+                    }
+                }
         }
 
         private fun onBackgrounded() {

@@ -3,7 +3,6 @@ package com.dminus14.app.feature.interview.interview
 import com.dminus14.app.domain.model.InterviewAnswerEndRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -34,11 +33,29 @@ class InterviewTurnStateMachineTest {
 
     @Test
     fun `제출 중 들어온 종료 의도는 최초 요청 하나만 보존한다`() {
-        val machine = InterviewTurnStateMachine()
-        machine.queueEnd(InterviewAnswerEndRequest.HardCap)
-        machine.queueEnd(InterviewAnswerEndRequest.BackExit)
+        val requests =
+            listOf(
+                InterviewAnswerEndRequest.ManualEnd,
+                InterviewAnswerEndRequest.BackExit,
+                InterviewAnswerEndRequest.HardCap,
+            )
 
-        assertEquals(InterviewAnswerEndRequest.HardCap, machine.consumePendingEnd())
-        assertNull(machine.consumePendingEnd())
+        requests.permutations().forEach { order ->
+            val machine = InterviewTurnStateMachine()
+            assertTrue(machine.requestEnd(order.first()))
+            order.drop(1).forEach { assertFalse(machine.requestEnd(it)) }
+            assertEquals(order.first(), machine.pendingEndRequest)
+            machine.completeTerminal()
+            assertEquals(null, machine.pendingEndRequest)
+        }
     }
+
+    private fun <T> List<T>.permutations(): List<List<T>> =
+        if (size <= 1) {
+            listOf(this)
+        } else {
+            flatMap { value ->
+                (this - value).permutations().map { remainder -> listOf(value) + remainder }
+            }
+        }
 }
