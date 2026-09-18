@@ -92,6 +92,7 @@ class InterviewViewModel
         private var completionReason = InterviewCompletionReason.COMPLETED
         private var wrapUpStartedAtMillis: Long? = null
         private var isWrapUpRecording = false
+        private var isWrapUpRetryPending = false
         private var finalizationWatchdogJob: Job? = null
         private var fatalExitJob: Job? = null
         private var wrapUpPayload: String? = null
@@ -613,7 +614,9 @@ class InterviewViewModel
                         finalizationWatchdogJob?.cancel()
                         finalizationWatchdogJob = null
                         reduce { copy(finalizationFailure = null) }
-                        completeInterview()
+                        if (!restartPendingWrapUpRecording()) {
+                            completeInterview()
+                        }
                     }
 
                     segment.type == InterviewMediaSegmentType.QUESTION_VIDEO &&
@@ -1063,6 +1066,7 @@ class InterviewViewModel
             isWrapUpRecording = false
             finalizationWatchdogJob?.cancel()
             finalizationWatchdogJob = null
+            if (restartPendingWrapUpRecording()) return
             reduce {
                 copy(finalizationFailure = InterviewFinalizationFailure.RECORDING_FAILURE)
             }
@@ -1072,9 +1076,8 @@ class InterviewViewModel
             if (isFinalOutcomeEmitted) return
             when (state.value.finalizationFailure) {
                 InterviewFinalizationFailure.RECORDING_FINALIZATION_TIMEOUT -> {
+                    isWrapUpRetryPending = true
                     reduce { copy(finalizationFailure = null) }
-                    startFinalizationWatchdog()
-                    sendEffect(InterviewEffect.StopRecordingSegment)
                 }
 
                 InterviewFinalizationFailure.RECORDING_FAILURE -> {
@@ -1092,6 +1095,14 @@ class InterviewViewModel
                     Unit
                 }
             }
+        }
+
+        private fun restartPendingWrapUpRecording(): Boolean {
+            if (!isWrapUpRetryPending) return false
+            isWrapUpRetryPending = false
+            val payload = wrapUpPayload ?: return false
+            startWrapUpRecording(payload)
+            return true
         }
 
         private fun exitFinalization() {

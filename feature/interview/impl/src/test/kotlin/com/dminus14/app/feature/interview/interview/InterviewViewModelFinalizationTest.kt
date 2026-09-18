@@ -53,9 +53,11 @@ class InterviewViewModelFinalizationTest {
         }
 
     @Test
-    fun `마무리 녹화 확정이 15초를 넘으면 중지 재시도 Modal을 표시한다`() =
+    fun `마무리 녹화 확정 지연을 재시도하면 기존 확정을 기다린 뒤 새 세그먼트를 시작한다`() =
         runTest(mainDispatcherRule.dispatcher) {
             val fixture = InterviewViewModelTestFixture()
+            val segment = wrapUpSegment()
+            fixture.manifests[InterviewViewModelTestFixture.SESSION_ID] = manifest(segment)
             val viewModel = fixture.createViewModel()
             val effects = mutableListOf<InterviewEffect>()
             backgroundScope.launch { viewModel.effect.toList(effects) }
@@ -69,15 +71,61 @@ class InterviewViewModelFinalizationTest {
                 viewModel.state.value.finalizationFailure,
             )
             val stopCount = effects.count { it == InterviewEffect.StopRecordingSegment }
+            val startCount = effects.filterIsInstance<InterviewEffect.StartRecordingSegment>().size
 
             viewModel.onIntent(InterviewIntent.ClickRetryFinalization)
             runCurrent()
 
             assertNull(viewModel.state.value.finalizationFailure)
+            assertEquals(stopCount, effects.count { it == InterviewEffect.StopRecordingSegment })
             assertEquals(
-                stopCount + 1,
-                effects.count { it == InterviewEffect.StopRecordingSegment },
+                startCount,
+                effects.filterIsInstance<InterviewEffect.StartRecordingSegment>().size,
             )
+
+            viewModel.onIntent(InterviewIntent.ReportRecordingSegmentFinalized(segment))
+            runCurrent()
+
+            assertEquals(
+                startCount + 1,
+                effects.filterIsInstance<InterviewEffect.StartRecordingSegment>().size,
+            )
+            assertEquals(2, effects.filterIsInstance<InterviewEffect.PlayWrapUpMessage>().size)
+            assertEquals(0, effects.filterIsInstance<InterviewEffect.InterviewEnded>().size)
+
+            advanceTimeBy(InterviewConstants.FINALIZATION_WATCHDOG_MILLIS)
+            runCurrent()
+
+            assertEquals(
+                InterviewFinalizationFailure.RECORDING_FINALIZATION_TIMEOUT,
+                viewModel.state.value.finalizationFailure,
+            )
+        }
+
+    @Test
+    fun `마무리 녹화 확정 지연을 재시도하면 기존 실패를 기다린 뒤 새 세그먼트를 시작한다`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val fixture = InterviewViewModelTestFixture()
+            val viewModel = fixture.createViewModel()
+            val effects = mutableListOf<InterviewEffect>()
+            backgroundScope.launch { viewModel.effect.toList(effects) }
+
+            enterFinalization(viewModel, fixture, reportGenerating = false)
+            advanceTimeBy(InterviewConstants.FINALIZATION_WATCHDOG_MILLIS)
+            runCurrent()
+            val stopCount = effects.count { it == InterviewEffect.StopRecordingSegment }
+
+            viewModel.onIntent(InterviewIntent.ClickRetryFinalization)
+            viewModel.onIntent(InterviewIntent.ReportRecordingFailure)
+            runCurrent()
+
+            assertNull(viewModel.state.value.finalizationFailure)
+            assertEquals(stopCount, effects.count { it == InterviewEffect.StopRecordingSegment })
+            assertEquals(
+                2,
+                effects.filterIsInstance<InterviewEffect.StartRecordingSegment>().size,
+            )
+            assertEquals(2, effects.filterIsInstance<InterviewEffect.PlayWrapUpMessage>().size)
         }
 
     @Test
