@@ -3,13 +3,18 @@ package com.dminus14.app.feature.onboarding
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.viewModelScope
+import com.dminus14.app.core.common.event.GlobalAppEvent
+import com.dminus14.app.core.common.event.GlobalErrorHandler
 import com.dminus14.app.core.common.mvi.MviViewModel
 import com.dminus14.app.core.common.pdf.PdfInvalidReason
 import com.dminus14.app.core.common.pdf.PdfValidationResult
 import com.dminus14.app.core.common.pdf.validatePdf
 import com.dminus14.app.domain.exception.AccountSuspendedException
 import com.dminus14.app.domain.exception.FreeTextNotRelevantException
+import com.dminus14.app.domain.exception.InvalidJdUrlException
 import com.dminus14.app.domain.exception.JdValidationLimitExceededException
+import com.dminus14.app.domain.exception.NetworkUnavailableException
+import com.dminus14.app.domain.exception.ServerException
 import com.dminus14.app.domain.model.InterviewSessionRequest
 import com.dminus14.app.domain.model.InterviewSessionStatusType
 import com.dminus14.app.domain.model.PortfolioStatus
@@ -22,7 +27,6 @@ import com.dminus14.app.domain.usecase.MakeInterviewSessionUseCase
 import com.dminus14.app.domain.usecase.SaveInterviewSessionProgressUseCase
 import com.dminus14.app.domain.usecase.UploadPortfolioUseCase
 import com.dminus14.app.domain.usecase.ValidateJdUrlUseCase
-import com.dminus14.app.feature.onboarding.OnBoardingInterviewViewModel.Companion.JD_DEBOUNCE_MS
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -91,11 +95,22 @@ class OnBoardingInterviewViewModel
                 }
 
                 is OnBoardingInterviewIntent.JobDescriptionTabChange -> {
+                    val nextTab =
+                        JobDescriptionTab.entries.getOrNull(intent.index)
+                            ?: state.value.jobDescriptionTab
+                    val cancelValidation =
+                        nextTab != state.value.jobDescriptionTab &&
+                            state.value.jdLinkStatus == JdLinkStatus.Validating
+                    if (cancelValidation) {
+                        jdValidationJob?.cancel()
+                    }
                     reduce {
                         copy(
-                            jobDescriptionTab =
-                                JobDescriptionTab.entries.getOrNull(intent.index)
-                                    ?: state.value.jobDescriptionTab,
+                            jobDescriptionTab = nextTab,
+                            jdLinkStatus =
+                                if (cancelValidation) JdLinkStatus.Idle else jdLinkStatus,
+                            jdLinkSubText =
+                                if (cancelValidation) "" else jdLinkSubText,
                         )
                     }
                 }
@@ -257,10 +272,7 @@ class OnBoardingInterviewViewModel
             }
         }
 
-        /**
-         * JD 링크는 입력 즉시 `https://` 포맷을 검사하고, 포맷을 통과하면 [JD_DEBOUNCE_MS] 뒤
-         * URL 검증 API를 호출한다. 하루 5회 제한이 있어 키 입력마다 호출하지 않도록 디바운스한다.
-         */
+        /** JD 링크 입력을 반영하고, 이전 검증 결과를 지운다. API 검증은 계속하기에서 시작한다. */
         private fun onJobDescriptionLinkChange(value: String) {
             jdValidationJob?.cancel()
             jdUrl = null
@@ -298,9 +310,7 @@ class OnBoardingInterviewViewModel
                 }
 
                 else -> {
-                    // https:// 스킴을 포함한 완전한 URL을 입력·붙여넣은 경우.
-                    // debounce 후 validation 이 상태를 확정할 때까지는 중립(Idle)로 두고,
-                    // 이전 Invalid 문구/색을 즉시 걷어 낸다.
+                    // 새 입력에는 이전 검증 결과를 적용하지 않는다.
                     reduce {
                         copy(
                             jobDescriptionLink = value,
@@ -308,18 +318,17 @@ class OnBoardingInterviewViewModel
                             jdLinkSubText = "",
                         )
                     }
-                    scheduleJdValidation(value)
                 }
             }
         }
 
-        private fun scheduleJdValidation(link: String) {
+        private fun validateAndSubmitJdLink(link: String) {
+            reduce { copy(jdLinkStatus = JdLinkStatus.Validating, jdLinkSubText = "") }
             jdValidationJob =
                 viewModelScope.launch {
-                    delay(JD_DEBOUNCE_MS)
-                    reduce { copy(jdLinkStatus = JdLinkStatus.Validating) }
                     validateJdUrl(link)
                         .onSuccess { result ->
+                            if (!isCurrentJdLinkValidation(link)) return@onSuccess
                             if (result.valid) {
                                 jdUrl = link
                                 jdText = null
@@ -334,26 +343,57 @@ class OnBoardingInterviewViewModel
                                 reduce {
                                     copy(
                                         jdLinkStatus = JdLinkStatus.Invalid,
-                                        jdLinkSubText = result.message ?: "",
+                                        jdLinkSubText = result.message ?: MESSAGE_LINK_INVALID,
                                     )
                                 }
                             }
                         }.onFailure { error ->
-                            // 429는 고정 문구로 강제 노출한다 (스펙 S1 확정 카피).
-                            val subText =
-                                when (error) {
-                                    is JdValidationLimitExceededException -> MESSAGE_LINK_RATE_LIMIT
-                                    else -> error.message ?: MESSAGE_LINK_INVALID
-                                }
-                            reduce {
-                                copy(
-                                    jdLinkStatus = JdLinkStatus.Invalid,
-                                    jdLinkSubText = subText,
-                                )
-                            }
+                            if (!isCurrentJdLinkValidation(link)) return@onFailure
+                            handleJdLinkValidationFailure(error)
                         }
                 }
         }
+
+        private suspend fun handleJdLinkValidationFailure(error: Throwable) {
+            when (error) {
+                is JdValidationLimitExceededException,
+                is InvalidJdUrlException,
+                -> {
+                    // 429는 고정 문구로 강제 노출한다 (스펙 S1 확정 카피).
+                    val subText =
+                        if (error is JdValidationLimitExceededException) {
+                            MESSAGE_LINK_RATE_LIMIT
+                        } else {
+                            error.message
+                        }
+                    reduce {
+                        copy(
+                            jdLinkStatus = JdLinkStatus.Invalid,
+                            jdLinkSubText = subText,
+                        )
+                    }
+                }
+
+                else -> {
+                    reduce { copy(jdLinkStatus = JdLinkStatus.Idle) }
+                    val event =
+                        when (error) {
+                            is NetworkUnavailableException -> GlobalAppEvent.ShowNetworkErrorAndExit
+                            is ServerException -> GlobalAppEvent.ShowServerErrorAndExit
+                            else -> GlobalAppEvent.ShowUnknownError
+                        }
+                    GlobalErrorHandler.emit(event)
+                }
+            }
+        }
+
+        private fun isCurrentJdLinkValidation(link: String): Boolean =
+            state.value.let { current ->
+                current.step == OnBoardingInterviewStep.JobDescription &&
+                    current.jobDescriptionTab == JobDescriptionTab.Link &&
+                    current.jobDescriptionLink == link &&
+                    current.jdLinkStatus == JdLinkStatus.Validating
+            }
 
         private fun submitJobDescription() {
             val current = state.value
@@ -370,8 +410,12 @@ class OnBoardingInterviewViewModel
                 return
             }
 
-            // 링크 탭: 검증 성공(자동 전진) 또는 빈 입력(건너뜀)일 때만 다음 스텝으로 간다.
+            // 링크 탭: 빈 입력은 건너뛰고, 입력한 링크는 계속하기를 누를 때 검증한다.
             when {
+                current.jdLinkStatus == JdLinkStatus.Validating -> {
+                    Unit
+                }
+
                 current.jdLinkStatus == JdLinkStatus.Valid -> {
                     advanceStep()
                 }
@@ -382,8 +426,17 @@ class OnBoardingInterviewViewModel
                     advanceStep()
                 }
 
+                !current.jobDescriptionLink.startsWith(HTTPS_SCHEME) -> {
+                    reduce {
+                        copy(
+                            jdLinkStatus = JdLinkStatus.Invalid,
+                            jdLinkSubText = MESSAGE_LINK_FORMAT,
+                        )
+                    }
+                }
+
                 else -> {
-                    Unit
+                    validateAndSubmitJdLink(current.jobDescriptionLink)
                 }
             }
         }
@@ -564,6 +617,11 @@ class OnBoardingInterviewViewModel
         }
 
         private fun advanceStep() {
+            if (state.value.step == OnBoardingInterviewStep.JobDescription &&
+                state.value.jdLinkStatus == JdLinkStatus.Validating
+            ) {
+                jdValidationJob?.cancel()
+            }
             val next =
                 when (state.value.step) {
                     OnBoardingInterviewStep.JobDescription -> OnBoardingInterviewStep.Portfolio
@@ -571,7 +629,20 @@ class OnBoardingInterviewViewModel
                     OnBoardingInterviewStep.MainProject -> OnBoardingInterviewStep.Preload
                     else -> return
                 }
-            reduce { copy(step = next, errorMessage = null) }
+            reduce {
+                copy(
+                    step = next,
+                    errorMessage = null,
+                    jdLinkStatus =
+                        if (jdLinkStatus ==
+                            JdLinkStatus.Validating
+                        ) {
+                            JdLinkStatus.Idle
+                        } else {
+                            jdLinkStatus
+                        },
+                )
+            }
             if (next == OnBoardingInterviewStep.Preload) {
                 startPreload()
             }
@@ -815,7 +886,6 @@ class OnBoardingInterviewViewModel
              * (초록 배경 확장 + 완료 텍스트 fadeIn/scale)을 볼 수 있게 잠시 대기한다.
              */
             const val PRELOAD_COMPLETION_DWELL_MS = 1_800L
-            const val JD_DEBOUNCE_MS = 600L
             const val HTTPS_SCHEME = "https://"
             const val MESSAGE_LINK_FORMAT = "올바른 URL 형식이 아니에요."
             const val MESSAGE_LINK_INVALID = "공고 내용을 정리하는 데 실패했어요. 공고 내용을 직접 붙여넣어 주세요."

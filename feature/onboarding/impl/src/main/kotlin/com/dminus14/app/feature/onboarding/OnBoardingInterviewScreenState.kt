@@ -11,7 +11,7 @@ internal fun OnBoardingInterviewState.isBottomBarEnabled(): Boolean =
 
 /**
  * 계속하기 버튼 활성 여부를 스텝별로 파생한다.
- * - JobDescription: 링크 탭은 빈 입력(건너뛰기) 또는 검증 성공, 직접 입력 탭은 200자 이상일 때만 활성.
+ * - JobDescription: 링크 탭은 검증 중에만 비활성, 직접 입력 탭은 200자 이상일 때만 활성.
  * - Portfolio: 업로드가 끝나 완료 카드(`PdfUploadType.Completed`)로 표시되는 상태와 같은 조건
  *   (`!isProcessing && fileName != null`)에서만 활성.
  * - MainProject: 선택 입력(빈 값이면 건너뛰기)이거나 최소 10자 이상 입력됐을 때만 활성.
@@ -42,7 +42,7 @@ internal fun OnBoardingInterviewState.isContinueEnabled(): Boolean =
 private fun OnBoardingInterviewState.isJobDescriptionContinueEnabled(): Boolean =
     when (jobDescriptionTab) {
         JobDescriptionTab.Link -> {
-            jobDescriptionLink.isEmpty() || jdLinkStatus == JdLinkStatus.Valid
+            jdLinkStatus != JdLinkStatus.Validating
         }
 
         JobDescriptionTab.Text -> {
