@@ -55,6 +55,7 @@ import io.mockk.unmockkAll
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -67,6 +68,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -468,6 +470,7 @@ class OnBoardingInterviewViewModelTest {
                 FakeInterviewRepository(
                     validateResult = Result.success(jdValidation(valid = true)),
                     validationDelayMs = 100,
+                    validationReturnsAfterCancellation = true,
                 )
             val viewModel = createViewModel(interviewRepository = interviewRepo)
             viewModel.onIntent(
@@ -480,6 +483,7 @@ class OnBoardingInterviewViewModelTest {
 
             assertEquals(OnBoardingInterviewStep.Portfolio, viewModel.state.value.step)
             assertEquals(JdLinkStatus.Idle, viewModel.state.value.jdLinkStatus)
+            assertEquals(1, interviewRepo.completedValidationCount)
         }
 
     @Test
@@ -1653,6 +1657,7 @@ class OnBoardingInterviewViewModelTest {
         private val validateResult: Result<JdValidationResult> =
             Result.success(jdValidation(valid = false)),
         private val validationDelayMs: Long = 0,
+        private val validationReturnsAfterCancellation: Boolean = false,
         private val createResult: Result<InterviewSessionResult> =
             Result.success(sessionResult()),
         private val sessionStatusResults: List<Result<InterviewSessionStatus>> =
@@ -1660,6 +1665,8 @@ class OnBoardingInterviewViewModelTest {
         private val repeatLastSessionStatus: Boolean = false,
     ) : InterviewRepository {
         val validatedUrls = mutableListOf<String>()
+        var completedValidationCount = 0
+            private set
         var createCallCount = 0
             private set
         var lastRequest: InterviewSessionRequest? = null
@@ -1668,8 +1675,16 @@ class OnBoardingInterviewViewModelTest {
 
         override suspend fun validateJdUrl(jdUrl: String): JdValidationResult {
             validatedUrls += jdUrl
-            if (validationDelayMs > 0) delay(validationDelayMs)
-            return validateResult.getOrThrow()
+            if (validationDelayMs > 0) {
+                if (validationReturnsAfterCancellation) {
+                    withContext(NonCancellable) { delay(validationDelayMs) }
+                } else {
+                    delay(validationDelayMs)
+                }
+            }
+            val result = validateResult.getOrThrow()
+            completedValidationCount += 1
+            return result
         }
 
         override suspend fun createInterviewSession(
