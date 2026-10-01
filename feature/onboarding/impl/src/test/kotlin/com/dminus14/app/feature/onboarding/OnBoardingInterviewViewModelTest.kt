@@ -2,12 +2,17 @@ package com.dminus14.app.feature.onboarding
 
 import android.content.Context
 import android.net.Uri
+import com.dminus14.app.core.common.event.GlobalAppEvent
+import com.dminus14.app.core.common.event.GlobalErrorHandler
 import com.dminus14.app.core.common.pdf.PdfInvalidReason
 import com.dminus14.app.core.common.pdf.PdfValidationResult
 import com.dminus14.app.core.common.pdf.validatePdf
 import com.dminus14.app.domain.exception.AccountSuspendedException
 import com.dminus14.app.domain.exception.FreeTextNotRelevantException
+import com.dminus14.app.domain.exception.InvalidJdUrlException
 import com.dminus14.app.domain.exception.JdValidationLimitExceededException
+import com.dminus14.app.domain.exception.NetworkUnavailableException
+import com.dminus14.app.domain.exception.ServerException
 import com.dminus14.app.domain.model.InterviewAbandon
 import com.dminus14.app.domain.model.InterviewAbandonRequestCause
 import com.dminus14.app.domain.model.InterviewReport
@@ -51,6 +56,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -215,24 +221,28 @@ class OnBoardingInterviewViewModelTest {
         }
 
     @Test
-    fun `완전한 URL 입력 시 즉시 Idle로 두고 이전 오류 문구를 걷어낸다`() =
+    fun `완전한 URL 입력만으로는 검증 요청이나 화면 이동이 발생하지 않는다`() =
         runViewModelTest {
-            val viewModel = createViewModel()
+            val interviewRepo = FakeInterviewRepository()
+            val viewModel = createViewModel(interviewRepository = interviewRepo)
 
             viewModel.onIntent(
                 OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
 
-            // debounce 전(시간 미경과)이라 아직 Validating이 아니다.
+            advanceUntilIdle()
             val state = viewModel.state.value
             assertEquals(JdLinkStatus.Idle, state.jdLinkStatus)
             assertEquals("", state.jdLinkSubText)
+            assertTrue(state.isContinueEnabled())
+            assertTrue(interviewRepo.validatedUrls.isEmpty())
+            assertEquals(OnBoardingInterviewStep.JobDescription, state.step)
         }
 
-    // ---- JobDescriptionLinkChange (debounce 검증) ----
+    // ---- ClickContinue (JD 링크 검증) ----
 
     @Test
-    fun `검증 성공이면 Valid로 바뀌고 자동으로 다음 스텝으로 전진한다`() =
+    fun `계속하기에서 검증에 성공하면 Valid로 바뀌고 다음 스텝으로 전진한다`() =
         runViewModelTest {
             val viewModel =
                 createViewModel(
@@ -245,6 +255,7 @@ class OnBoardingInterviewViewModelTest {
             viewModel.onIntent(
                 OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -269,6 +280,7 @@ class OnBoardingInterviewViewModelTest {
             viewModel.onIntent(
                 OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -297,6 +309,7 @@ class OnBoardingInterviewViewModelTest {
             viewModel.onIntent(
                 OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -305,7 +318,35 @@ class OnBoardingInterviewViewModelTest {
         }
 
     @Test
-    fun `검증 기타 실패면 예외 메시지가 노출된다`() =
+    fun `검증 실패가 잘못된 JD 링크이면 서버 안내 문구를 입력 필드에 표시한다`() =
+        runViewModelTest {
+            val viewModel =
+                createViewModel(
+                    interviewRepository =
+                        FakeInterviewRepository(
+                            validateResult =
+                                Result.failure(
+                                    InvalidJdUrlException(
+                                        errCode = "INVALID_JD_URL",
+                                        message = "공고 링크를 확인해 주세요",
+                                    ),
+                                ),
+                        ),
+                )
+            viewModel.onIntent(
+                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+            )
+
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            advanceUntilIdle()
+
+            assertEquals(JdLinkStatus.Invalid, viewModel.state.value.jdLinkStatus)
+            assertEquals("공고 링크를 확인해 주세요", viewModel.state.value.jdLinkSubText)
+            assertEquals(OnBoardingInterviewStep.JobDescription, viewModel.state.value.step)
+        }
+
+    @Test
+    fun `검증 중 알 수 없는 오류가 발생하면 전역 오류 이벤트가 발행된다`() =
         runViewModelTest {
             val viewModel =
                 createViewModel(
@@ -314,17 +355,69 @@ class OnBoardingInterviewViewModelTest {
                             validateResult = Result.failure(IllegalStateException("네트워크 오류")),
                         ),
                 )
+            val globalEvent =
+                async(start = CoroutineStart.UNDISPATCHED) { GlobalErrorHandler.events.first() }
 
             viewModel.onIntent(
                 OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
             advanceUntilIdle()
 
-            assertEquals("네트워크 오류", viewModel.state.value.jdLinkSubText)
+            assertEquals(GlobalAppEvent.ShowUnknownError, globalEvent.await().event)
+            assertEquals(JdLinkStatus.Idle, viewModel.state.value.jdLinkStatus)
+            assertEquals(OnBoardingInterviewStep.JobDescription, viewModel.state.value.step)
         }
 
     @Test
-    fun `링크가 연속으로 바뀌면 이전 validation Job이 취소되어 마지막 값만 검증한다`() =
+    fun `검증 중 네트워크 오류가 발생하면 전역 네트워크 오류 이벤트가 발행된다`() =
+        runViewModelTest {
+            val viewModel =
+                createViewModel(
+                    interviewRepository =
+                        FakeInterviewRepository(
+                            validateResult =
+                                Result.failure(NetworkUnavailableException(errCode = "NETWORK")),
+                        ),
+                )
+            val globalEvent =
+                async(start = CoroutineStart.UNDISPATCHED) { GlobalErrorHandler.events.first() }
+            viewModel.onIntent(
+                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+            )
+
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            advanceUntilIdle()
+
+            assertEquals(GlobalAppEvent.ShowNetworkErrorAndExit, globalEvent.await().event)
+            assertEquals(OnBoardingInterviewStep.JobDescription, viewModel.state.value.step)
+        }
+
+    @Test
+    fun `검증 중 서버 오류가 발생하면 전역 서버 오류 이벤트가 발행된다`() =
+        runViewModelTest {
+            val viewModel =
+                createViewModel(
+                    interviewRepository =
+                        FakeInterviewRepository(
+                            validateResult = Result.failure(ServerException(errCode = "SERVER")),
+                        ),
+                )
+            val globalEvent =
+                async(start = CoroutineStart.UNDISPATCHED) { GlobalErrorHandler.events.first() }
+            viewModel.onIntent(
+                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+            )
+
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            advanceUntilIdle()
+
+            assertEquals(GlobalAppEvent.ShowServerErrorAndExit, globalEvent.await().event)
+            assertEquals(OnBoardingInterviewStep.JobDescription, viewModel.state.value.step)
+        }
+
+    @Test
+    fun `링크가 연속으로 바뀌어도 계속하기 전에는 요청하지 않고 마지막 값만 검증한다`() =
         runViewModelTest {
             val interviewRepo =
                 FakeInterviewRepository(validateResult = Result.success(jdValidation(valid = true)))
@@ -338,7 +431,70 @@ class OnBoardingInterviewViewModelTest {
             )
             advanceUntilIdle()
 
+            assertTrue(interviewRepo.validatedUrls.isEmpty())
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            advanceUntilIdle()
+
             assertEquals(listOf("https://jd.com/ab"), interviewRepo.validatedUrls)
+        }
+
+    @Test
+    fun `검증 중 계속하기를 다시 눌러도 요청은 한 번만 전송된다`() =
+        runViewModelTest {
+            val interviewRepo =
+                FakeInterviewRepository(
+                    validateResult = Result.success(jdValidation(valid = true)),
+                    validationDelayMs = 100,
+                )
+            val viewModel = createViewModel(interviewRepository = interviewRepo)
+            viewModel.onIntent(
+                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+            )
+
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            assertEquals(JdLinkStatus.Validating, viewModel.state.value.jdLinkStatus)
+            assertFalse(viewModel.state.value.isContinueEnabled())
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            advanceUntilIdle()
+
+            assertEquals(listOf("https://jd.com/1"), interviewRepo.validatedUrls)
+            assertEquals(OnBoardingInterviewStep.Portfolio, viewModel.state.value.step)
+        }
+
+    @Test
+    fun `검증 중 건너뛰면 늦게 도착한 결과가 다음 스텝으로 이동시키지 않는다`() =
+        runViewModelTest {
+            val interviewRepo =
+                FakeInterviewRepository(
+                    validateResult = Result.success(jdValidation(valid = true)),
+                    validationDelayMs = 100,
+                )
+            val viewModel = createViewModel(interviewRepository = interviewRepo)
+            viewModel.onIntent(
+                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+            )
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip)
+            advanceUntilIdle()
+
+            assertEquals(OnBoardingInterviewStep.Portfolio, viewModel.state.value.step)
+            assertEquals(JdLinkStatus.Idle, viewModel.state.value.jdLinkStatus)
+        }
+
+    @Test
+    fun `형식이 잘못된 링크는 계속하기를 눌러도 API를 요청하지 않는다`() =
+        runViewModelTest {
+            val interviewRepo = FakeInterviewRepository()
+            val viewModel = createViewModel(interviewRepository = interviewRepo)
+            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionLinkChange("http://jd.com"))
+
+            assertTrue(viewModel.state.value.isContinueEnabled())
+            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+
+            assertTrue(interviewRepo.validatedUrls.isEmpty())
+            assertEquals(JdLinkStatus.Invalid, viewModel.state.value.jdLinkStatus)
+            assertEquals(OnBoardingInterviewStep.JobDescription, viewModel.state.value.step)
         }
 
     // ---- JobDescriptionTextChange / Text 탭 제출 ----
@@ -416,7 +572,7 @@ class OnBoardingInterviewViewModelTest {
         }
 
     @Test
-    fun `Link 탭에서 검증 미완료 상태면 전진하지 않는다`() =
+    fun `Link 탭에서 검증 결과가 실패이면 계속하기를 눌러도 전진하지 않는다`() =
         runViewModelTest {
             val viewModel =
                 createViewModel(
@@ -425,12 +581,12 @@ class OnBoardingInterviewViewModelTest {
                             validateResult = Result.success(jdValidation(valid = false)),
                         ),
                 )
-            // 링크는 입력했지만 debounce 검증을 진행시키지 않아 Idle 상태로 둔다.
             viewModel.onIntent(
                 OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
 
             viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            advanceUntilIdle()
 
             assertEquals(OnBoardingInterviewStep.JobDescription, viewModel.state.value.step)
         }
@@ -1496,6 +1652,7 @@ class OnBoardingInterviewViewModelTest {
     private class FakeInterviewRepository(
         private val validateResult: Result<JdValidationResult> =
             Result.success(jdValidation(valid = false)),
+        private val validationDelayMs: Long = 0,
         private val createResult: Result<InterviewSessionResult> =
             Result.success(sessionResult()),
         private val sessionStatusResults: List<Result<InterviewSessionStatus>> =
@@ -1511,6 +1668,7 @@ class OnBoardingInterviewViewModelTest {
 
         override suspend fun validateJdUrl(jdUrl: String): JdValidationResult {
             validatedUrls += jdUrl
+            if (validationDelayMs > 0) delay(validationDelayMs)
             return validateResult.getOrThrow()
         }
 
