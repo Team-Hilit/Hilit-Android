@@ -45,10 +45,14 @@ Story를 생성하지 않고 Controls에 필요한 반복 코드만 생성한다
 
 Story는 다음 조건을 충족한다.
 
+- 모든 `StoryGroup`은 예외 없이 `id = "default"`인 기본 Story를 정확히 하나 포함한다.
 - 합성·비식별 데이터만 사용한다.
 - 실제 API, ViewModel과 제품 runtime dependency를 사용하지 않는다.
 - component의 대표 상태와 필요한 추가 상태를 검토할 수 있게 한다.
 - public component의 API나 상호작용이 바뀌면 같은 변경에서 갱신한다.
+
+기본 Story 여부는 표시용 `title`이 아니라 `id`로 판단한다. 기본 Story가 누락되면 Story 등록
+검증에서 예외가 발생하여 카탈로그 초기화가 중단된다.
 
 ## 4. Catalog Controls adapter
 
