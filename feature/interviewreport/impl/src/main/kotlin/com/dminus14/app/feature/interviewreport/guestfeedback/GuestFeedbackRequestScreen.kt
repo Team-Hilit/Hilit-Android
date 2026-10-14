@@ -15,9 +15,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 /**
  * 지인 피드백 항목선택 + 공유 링크 생성 화면.
  *
- * ViewModel Effect 를 상위 Navigation·클립보드·공유 시트로 승격한다. 멘트 복사 후에는
- * ViewModel 이 2초 뒤 [GuestFeedbackRequestEffect.NavigateBack] 을 발행해 리포트로 자동
- * 복귀시킨다. 공유 시트는 취소할 수 있으므로 모달을 그대로 둔다.
+ * ViewModel Effect 를 상위 Navigation·클립보드·공유 시트로 승격한다. 멘트 복사와 공유는
+ * 화면을 벗어나지 않는다. 복사는 2초 안내 후 모달만 닫히고, 공유 시트는 취소할 수 있으므로
+ * 모달을 그대로 둔다.
  */
 @Composable
 fun GuestFeedbackRequestScreen(
