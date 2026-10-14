@@ -26,6 +26,7 @@ internal fun HilitAsyncTextFieldCatalogAdapter(
     processingText: String,
     subText: String,
     type: HilitAsyncTextFieldType,
+    descriptionText: String = "",
 ) {
     var text by remember(value) { mutableStateOf(value) }
 
@@ -43,6 +44,7 @@ internal fun HilitAsyncTextFieldCatalogAdapter(
             placeholder = placeholder,
             processingText = processingText,
             subText = subText,
+            descriptionText = descriptionText,
             onClearClick = { text = "" },
         )
     }

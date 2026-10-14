@@ -2,6 +2,7 @@ package com.dminus14.designsystem.component.textfield
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,6 +37,8 @@ private const val DEFAULT_MAX_LENGTH = 300
 private const val DEFAULT_PLACEHOLDER = "텍스트를 입력해주세요"
 
 /**
+ * Figma Node: 2091:806, 1320:6624, 3759:14839
+ *
  * JD 입력용 멀티라인 텍스트 필드. 하단에 조건 검증 서브텍스트·글자 수 카운터를 표시한다.
  *
  * Figma: text-field status=large (`2091:806`, `1320:6624`)
@@ -48,6 +51,7 @@ private const val DEFAULT_PLACEHOLDER = "텍스트를 입력해주세요"
  * @param minLength 최소 글자 수 조건. null이면 검증 서브텍스트를 숨긴다
  * @param validationErrorText [minLength] 미만일 때 노출할 Error 서브텍스트
  * @param validationSuccessText [minLength] 이상일 때 노출할 Success 서브텍스트
+ * @param descriptionText 명시적 오류와 길이 검증 메시지가 없을 때 표시할 안내
  * @param explicitErrorText null이 아니면 length 조건과 무관하게 이 텍스트를 Error 서브텍스트로
  *   강제 노출한다. 서버 검증 실패(예: 연관성 부족)처럼 글자 수와 무관한 오류에 사용.
  */
@@ -62,6 +66,7 @@ fun HilitJDTextField(
     validationErrorText: String = "",
     validationSuccessText: String = "",
     explicitErrorText: String? = null,
+    descriptionText: String = "",
 ) {
     val safeMaxLength = maxLength.coerceAtLeast(0)
     val safeMinLength = minLength?.coerceAtLeast(0)
@@ -73,12 +78,13 @@ fun HilitJDTextField(
     val borderColor = HilitTheme.colors.gray100
     val surfaceColor = HilitTheme.colors.hilitWhite
     val validationSubText =
-        resolveValidationSubText(
+        resolveJDTextFieldSubText(
             value = value,
             minLength = safeMinLength,
             validationErrorText = validationErrorText,
             validationSuccessText = validationSuccessText,
             explicitErrorText = explicitErrorText,
+            descriptionText = descriptionText,
         )
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -135,6 +141,7 @@ fun HilitJDTextField(
                     .fillMaxWidth()
                     .padding(top = HilitJDTextFieldFooterSpacing),
             verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (validationSubText != null) {
                 HilitSubText(
@@ -157,12 +164,14 @@ fun HilitJDTextField(
     }
 }
 
-private fun resolveValidationSubText(
+/** 명시적 오류, 길이 검증 메시지, 기본 안내 순으로 하단 문구를 선택한다. */
+internal fun resolveJDTextFieldSubText(
     value: String,
     minLength: Int?,
     validationErrorText: String,
     validationSuccessText: String,
     explicitErrorText: String?,
+    descriptionText: String = "",
 ): Pair<String, HilitSubTextType>? {
     // 명시적 error 가 있으면 length 조건과 무관하게 우선 노출한다.
     if (!explicitErrorText.isNullOrEmpty()) {
@@ -170,14 +179,17 @@ private fun resolveValidationSubText(
     }
 
     if (minLength == null || value.isEmpty()) {
-        return null
+        return descriptionText.takeIf { it.isNotEmpty() }?.let { it to HilitSubTextType.Default }
     }
 
-    return if (value.length >= minLength) {
-        validationSuccessText.takeIf { it.isNotEmpty() }?.let { it to HilitSubTextType.Success }
-    } else {
-        validationErrorText.takeIf { it.isNotEmpty() }?.let { it to HilitSubTextType.Error }
-    }
+    val validationMessage =
+        if (value.length >= minLength.coerceAtLeast(0)) {
+            validationSuccessText.takeIf { it.isNotEmpty() }?.let { it to HilitSubTextType.Success }
+        } else {
+            validationErrorText.takeIf { it.isNotEmpty() }?.let { it to HilitSubTextType.Error }
+        }
+    return validationMessage
+        ?: descriptionText.takeIf { it.isNotEmpty() }?.let { it to HilitSubTextType.Default }
 }
 
 @Preview(
@@ -231,7 +243,8 @@ private fun HilitJDTextFieldValidationSuccessPreview() {
                 "당사 서비스의 백엔드 API를 설계하고 운영하실 시니어 개발자를 찾고 있습니다. " +
                     "Kotlin, Spring Boot 기반 마이크로서비스 경험이 필요하며, " +
                     "대용량 트래픽 처리와 데이터 파이프라인 구축 경험을 우대합니다. " +
-                    "협업과 코드 리뷰 문화를 중시하는 팀에서 함께 성장할 분을 기다립니다.",
+                    "협업과 코드 리뷰 문화를 중시하는 팀에서 함께 성장할 분을 기다립니다. " +
+                    "서비스 품질을 개선하고 안정적인 배포를 위해 자동화 테스트와 모니터링을 함께 구축합니다.",
             onValueChange = {},
             modifier = Modifier.padding(16.dp),
             maxLength = 3000,
