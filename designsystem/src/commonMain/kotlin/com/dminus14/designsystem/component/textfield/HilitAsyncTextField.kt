@@ -73,6 +73,8 @@ private val SubTextSpacing = 8.dp
 private const val PROCESSING_SEGMENT_FRACTION = 0.3f
 
 /**
+ * Figma Node: 2044:1801, 3759:14839
+ *
  * 범용 비동기 처리 텍스트 필드. 상태에 따라 하단 indicator·클리어 버튼·서브텍스트가 달라진다.
  *
  * URL 확인, 중복 체크, 데이터 조회 등 값 입력 후 비동기 처리가 필요한 다양한 유즈케이스에
@@ -87,6 +89,7 @@ private const val PROCESSING_SEGMENT_FRACTION = 0.3f
  * @param placeholder 값이 비어 있을 때 표시할 placeholder
  * @param processingText [HilitAsyncTextFieldType.Processing]일 때 우측에 노출할 상태 문구
  * @param subText Ready/Complete/Error일 때만 [HilitSubText]로 노출된다. 빈 문자열이면 숨긴다
+ * @param descriptionText 상태 메시지가 없을 때 표시할 안내. Processing에서는 숨긴다
  * @param onClearClick Edit/Complete/Error의 클리어 버튼 클릭 콜백. null이면 클릭해도 동작하지 않는다
  */
 @Composable
@@ -99,6 +102,7 @@ fun HilitAsyncTextField(
     processingText: String = "처리 중",
     subText: String = "",
     onClearClick: (() -> Unit)? = null,
+    descriptionText: String = "",
 ) {
     val editable = type != HilitAsyncTextFieldType.Processing
     val showClear =
@@ -106,13 +110,10 @@ fun HilitAsyncTextField(
             type == HilitAsyncTextFieldType.Complete ||
             type == HilitAsyncTextFieldType.Error
     val showProcessingLabel = type == HilitAsyncTextFieldType.Processing
-    val showSubText =
-        subText.isNotEmpty() &&
-            (
-                type == HilitAsyncTextFieldType.Ready ||
-                    type == HilitAsyncTextFieldType.Complete ||
-                    type == HilitAsyncTextFieldType.Error
-            )
+    val footer = resolveAsyncTextFieldSubText(type, subText, descriptionText)
+    val showDescription =
+        subText.isEmpty() || type == HilitAsyncTextFieldType.Focus ||
+            type == HilitAsyncTextFieldType.Edit
 
     val surfaceColor =
         if (type == HilitAsyncTextFieldType.Processing) {
@@ -218,10 +219,11 @@ fun HilitAsyncTextField(
             )
         }
 
-        if (showSubText) {
+        if (footer != null) {
             HilitSubText(
-                text = subText,
-                type = type.toSubTextType(),
+                text = footer.first,
+                type = footer.second,
+                maxLines = if (showDescription) Int.MAX_VALUE else 1,
                 modifier = Modifier.padding(top = SubTextSpacing),
             )
         }
@@ -293,12 +295,39 @@ private fun ProcessingIndicator(modifier: Modifier = Modifier) {
     }
 }
 
-private fun HilitAsyncTextFieldType.toSubTextType(): HilitSubTextType =
-    when (this) {
-        HilitAsyncTextFieldType.Ready -> HilitSubTextType.Default
-        HilitAsyncTextFieldType.Complete -> HilitSubTextType.Success
-        HilitAsyncTextFieldType.Error -> HilitSubTextType.Error
-        else -> HilitSubTextType.Default
+/** 기존 상태 메시지를 우선하고, 처리 중에는 하단 안내를 숨긴다. */
+internal fun resolveAsyncTextFieldSubText(
+    type: HilitAsyncTextFieldType,
+    subText: String,
+    descriptionText: String = "",
+): Pair<String, HilitSubTextType>? =
+    when {
+        type == HilitAsyncTextFieldType.Processing -> {
+            null
+        }
+
+        subText.isNotEmpty() && type == HilitAsyncTextFieldType.Ready -> {
+            subText to
+                HilitSubTextType.Default
+        }
+
+        subText.isNotEmpty() && type == HilitAsyncTextFieldType.Complete -> {
+            subText to
+                HilitSubTextType.Success
+        }
+
+        subText.isNotEmpty() && type == HilitAsyncTextFieldType.Error -> {
+            subText to
+                HilitSubTextType.Error
+        }
+
+        descriptionText.isNotEmpty() -> {
+            descriptionText to HilitSubTextType.Default
+        }
+
+        else -> {
+            null
+        }
     }
 
 @Preview(

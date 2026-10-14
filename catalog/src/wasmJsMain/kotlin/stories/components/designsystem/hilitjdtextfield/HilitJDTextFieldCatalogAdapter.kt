@@ -17,6 +17,8 @@ internal fun HilitJDTextFieldCatalogAdapter(
     minLength: Int = 0,
     validationErrorText: String = "",
     validationSuccessText: String = "",
+    explicitErrorText: String = "",
+    descriptionText: String = "",
 ) {
     val safeMaxLength = maxLength.coerceAtLeast(0)
     var text by remember(value, safeMaxLength) {
@@ -31,5 +33,7 @@ internal fun HilitJDTextFieldCatalogAdapter(
         minLength = minLength.takeIf { it > 0 },
         validationErrorText = validationErrorText,
         validationSuccessText = validationSuccessText,
+        explicitErrorText = explicitErrorText.takeIf { it.isNotEmpty() },
+        descriptionText = descriptionText,
     )
 }

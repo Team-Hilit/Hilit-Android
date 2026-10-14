@@ -18,12 +18,16 @@ import com.dminus14.designsystem.theme.HilitTheme
 
 private val SubtitleToLabelSpacing = 30.dp
 private val LabelToFieldSpacing = 10.dp
-private val BubbleBottomPadding = 16.dp
 private const val MAIN_PROJECT_MAX_LENGTH = 300
 private const val MAIN_PROJECT_PLACEHOLDER =
     "프로젝트에서 담당하신 주요 내용을 담아 10글자 이상 작성해 주세요. " +
         "AI가 프로젝트를 더 좋은 면접 질문을 만들 수 있어요."
 
+/**
+ * Figma Node: 3759:14839
+ *
+ * 선택 입력 안내는 입력란 아래에 표시하고 오류·검증 메시지가 있으면 숨긴다.
+ */
 @Composable
 fun OnBoardingMainProjectStep(
     text: String,
@@ -60,21 +64,14 @@ fun OnBoardingMainProjectStep(
                 // 서버 연관성 판단(FREETEXT_NOT_RELEVANT) 등 필드 밖 오류를 subtext 슬롯에 노출.
                 // 로컬 최소 길이 위반은 계속하기 버튼 자체가 비활성이라 이 자리로 오지 않는다.
                 explicitErrorText = error,
+                descriptionText = "작성하지 않아도 면접을 시작할 수 있어요",
                 modifier = Modifier.padding(top = LabelToFieldSpacing),
             )
         }
-
-        OnBoardingHintBubble(
-            text = "나중에 등록해도 괜찮아요!",
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .padding(bottom = BubbleBottomPadding),
-        )
     }
 }
 
-@Preview(name = "Empty", showBackground = true, widthDp = 375, heightDp = 812)
+@Preview(name = "Empty with description", showBackground = true, widthDp = 375, heightDp = 812)
 @Composable
 private fun OnBoardingMainProjectStepPreview() {
     HilitTheme {
@@ -86,7 +83,7 @@ private fun OnBoardingMainProjectStepPreview() {
     }
 }
 
-@Preview(name = "Filled", showBackground = true, widthDp = 375, heightDp = 812)
+@Preview(name = "Filled with description", showBackground = true, widthDp = 375, heightDp = 812)
 @Composable
 private fun OnBoardingMainProjectStepFilledPreview() {
     HilitTheme {

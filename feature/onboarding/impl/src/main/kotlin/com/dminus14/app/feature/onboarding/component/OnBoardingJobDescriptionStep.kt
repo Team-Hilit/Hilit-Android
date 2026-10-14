@@ -21,11 +21,15 @@ import com.dminus14.designsystem.component.textfield.HilitJDTextField
 
 private val SubtitleToTabSpacing = 34.dp
 private val TabToFieldSpacing = 16.dp
-private val BubbleBottomPadding = 16.dp
 private const val JOB_DESCRIPTION_TEXT_MAX_LENGTH = 3000
 private const val JOB_DESCRIPTION_TEXT_VALIDATION_ERROR = "공고 내용은 200자 이상으로 입력해 주세요"
 private const val JOB_DESCRIPTION_TEXT_VALIDATION_SUCCESS = "공고 내용을 확인했어요"
 
+/**
+ * Figma Node: 3759:14839
+ *
+ * 선택 입력 안내는 입력란 아래에 표시하고 오류·검증 메시지가 있으면 숨긴다.
+ */
 @Composable
 @Suppress("LongParameterList")
 fun OnBoardingJobDescriptionStep(
@@ -69,14 +73,6 @@ fun OnBoardingJobDescriptionStep(
             onIntent = onIntent,
             modifier = Modifier.padding(top = TabToFieldSpacing),
         )
-
-        OnBoardingHintBubble(
-            text = "링크 입력을 원하지 않으면 넘어가도 괜찮아요.",
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .padding(bottom = BubbleBottomPadding),
-        )
     }
 }
 
@@ -104,6 +100,7 @@ private fun OnBoardingJobDescriptionField(
                 placeholder = "https://www.hilit.com/",
                 processingText = "분석 중",
                 subText = linkSubText,
+                descriptionText = "채용공고 없이도 계속 진행할 수 있어요",
                 onClearClick = { onIntent(OnBoardingInterviewIntent.JobDescriptionLinkChange("")) },
                 modifier = modifier,
             )
@@ -117,6 +114,7 @@ private fun OnBoardingJobDescriptionField(
                         OnBoardingInterviewIntent.JobDescriptionTextChange(it),
                     )
                 },
+                descriptionText = "채용공고 없이도 계속 진행할 수 있어요",
                 maxLength = JOB_DESCRIPTION_TEXT_MAX_LENGTH,
                 minLength = JOB_DESCRIPTION_TEXT_MIN_LENGTH,
                 validationErrorText = JOB_DESCRIPTION_TEXT_VALIDATION_ERROR,
