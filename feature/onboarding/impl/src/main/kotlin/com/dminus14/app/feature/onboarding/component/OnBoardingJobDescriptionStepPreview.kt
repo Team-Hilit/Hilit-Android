@@ -6,7 +6,12 @@ import com.dminus14.app.feature.onboarding.JdLinkStatus
 import com.dminus14.app.feature.onboarding.JobDescriptionTab
 import com.dminus14.designsystem.theme.HilitTheme
 
-@Preview(name = "Link - Empty", showBackground = true, widthDp = 375, heightDp = 812)
+@Preview(
+    name = "Link - Empty with description",
+    showBackground = true,
+    widthDp = 375,
+    heightDp = 812,
+)
 @Composable
 private fun OnBoardingJobDescriptionStepLinkPreview() {
     HilitTheme {
@@ -81,7 +86,12 @@ private fun OnBoardingJobDescriptionStepLinkErrorPreview() {
     }
 }
 
-@Preview(name = "Text - Empty", showBackground = true, widthDp = 375, heightDp = 812)
+@Preview(
+    name = "Text - Empty with description",
+    showBackground = true,
+    widthDp = 375,
+    heightDp = 812,
+)
 @Composable
 private fun OnBoardingJobDescriptionStepTextPreview() {
     HilitTheme {
@@ -124,7 +134,8 @@ private fun OnBoardingJobDescriptionStepTextValidPreview() {
                 "당사 서비스의 백엔드 API를 설계하고 운영하실 시니어 개발자를 찾고 있습니다. " +
                     "Kotlin, Spring Boot 기반 마이크로서비스 경험이 필요하며, " +
                     "대용량 트래픽 처리와 데이터 파이프라인 구축 경험을 우대합니다. " +
-                    "협업과 코드 리뷰 문화를 중시하는 팀에서 함께 성장할 분을 기다립니다.",
+                    "협업과 코드 리뷰 문화를 중시하는 팀에서 함께 성장할 분을 기다립니다. " +
+                    "서비스 품질을 개선하고 안정적인 배포를 위해 자동화 테스트와 모니터링을 함께 구축합니다.",
             onIntent = {},
         )
     }

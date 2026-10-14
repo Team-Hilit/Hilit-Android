@@ -1,18 +1,10 @@
 package com.dminus14.app.feature.onboarding
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import com.dminus14.app.feature.onboarding.component.OnBoardingExistingPortfolioConfirmModal
-import com.dminus14.app.feature.onboarding.component.OnBoardingHintBubble
 import com.dminus14.app.feature.onboarding.component.OnBoardingUseExistingPortfolioNotice
 import com.dminus14.designsystem.theme.HilitTheme
-
-private val HintBubblePreviewBottomPadding = 16.dp
 
 @Preview(name = "JobDescription", showBackground = true, widthDp = 375, heightDp = 812)
 @Composable
@@ -104,38 +96,6 @@ private fun OnBoardingInterviewPreloadPreview() {
             state = OnBoardingInterviewState(step = OnBoardingInterviewStep.Preload),
             onIntent = {},
         )
-    }
-}
-
-@Preview(name = "HintBubble - JobDescription", showBackground = true, widthDp = 375, heightDp = 200)
-@Composable
-private fun OnBoardingHintBubbleJobDescriptionPreview() {
-    HilitTheme {
-        Column(modifier = Modifier.fillMaxSize()) {
-            OnBoardingHintBubble(
-                text = "링크 입력을 원하지 않으면 넘어가도 괜찮아요.",
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .padding(bottom = HintBubblePreviewBottomPadding),
-            )
-        }
-    }
-}
-
-@Preview(name = "HintBubble - MainProject", showBackground = true, widthDp = 375, heightDp = 200)
-@Composable
-private fun OnBoardingHintBubbleMainProjectPreview() {
-    HilitTheme {
-        Column(modifier = Modifier.fillMaxSize()) {
-            OnBoardingHintBubble(
-                text = "나중에 등록해도 괜찮아요!",
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .padding(bottom = HintBubblePreviewBottomPadding),
-            )
-        }
     }
 }
 
