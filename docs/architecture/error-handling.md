@@ -103,13 +103,14 @@ SharedFlow를 사용하는 구현은 collect 이전 event를 위한 `extraBuffer
 
 ## 5. ViewModel 처리
 
-ViewModel은 loading State를 복구한 뒤 error type에 따라 화면 또는 전역 경로를 선택한다.
+ViewModel 또는 위임받은 Feature 내부 Handler는 loading 상태를 복구하는 Mutation을 전달한
+뒤 error type에 따라 화면 또는 전역 경로를 선택한다. 책임을 Handler로 옮겨도 오류 분류와
+전달 정책은 동일하며, Reducer는 오류 표시용 상태만 계산한다.
 
 ```kotlin
+context.dispatch(SampleMutation.LoadFinished)
 when (throwable) {
-    is ClientException -> reduce {
-        copy(isLoading = false, errorMessage = throwable.message)
-    }
+    is ClientException -> context.dispatch(SampleMutation.LoadFailed(throwable.message))
 
     is NetworkUnavailableException ->
         GlobalErrorHandler.emit(GlobalAppEvent.ShowNetworkErrorAndExit)
