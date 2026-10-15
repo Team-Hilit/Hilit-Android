@@ -42,28 +42,32 @@ class InterviewViewModelTurnTest {
                 )
             val viewModel = fixture.createViewModel()
 
-            viewModel.onIntent(InterviewIntent.LoadInterview)
+            viewModel.onIntent(InterviewIntent.Preparation.LoadInterview)
             runCurrent()
-            viewModel.onIntent(InterviewIntent.ReportCameraPermissionGranted)
-            viewModel.onIntent(InterviewIntent.ReportCameraReady)
-            viewModel.onIntent(InterviewIntent.ReportMicrophoneReady)
-            viewModel.onIntent(InterviewIntent.ReportStorageAvailability(Long.MAX_VALUE))
+            viewModel.onIntent(InterviewIntent.Preparation.ReportCameraPermissionGranted)
+            viewModel.onIntent(InterviewIntent.Preparation.ReportCameraReady)
+            viewModel.onIntent(InterviewIntent.Preparation.ReportMicrophoneReady)
+            viewModel.onIntent(
+                InterviewIntent.Preparation.ReportStorageAvailability(Long.MAX_VALUE),
+            )
             advanceTimeBy(InterviewConstants.PREPARATION_STAGE_MIN_DURATION_MILLIS * 2L)
             runCurrent()
-            viewModel.onIntent(InterviewIntent.StartInterview)
+            viewModel.onIntent(InterviewIntent.Timing.StartInterview)
             runCurrent()
-            viewModel.onIntent(InterviewIntent.ReportQuestionPlaybackStarted)
-            viewModel.onIntent(InterviewIntent.ReportQuestionPlaybackCompleted)
-            viewModel.onIntent(InterviewIntent.ReportRecordingSegmentFinalized(questionSegment))
+            viewModel.onIntent(InterviewIntent.Turn.ReportQuestionPlaybackStarted)
+            viewModel.onIntent(InterviewIntent.Turn.ReportQuestionPlaybackCompleted)
+            viewModel.onIntent(
+                InterviewIntent.Turn.ReportRecordingSegmentFinalized(questionSegment),
+            )
             runCurrent()
 
             val answerSegment = segment(1, InterviewMediaSegmentType.ANSWER_VIDEO, 1L)
             fixture.manifests.computeValue { manifest ->
                 manifest.copy(nextSequence = 2, segments = manifest.segments + answerSegment)
             }
-            viewModel.onIntent(InterviewIntent.ReportAnswerSpeechStarted)
-            viewModel.onIntent(InterviewIntent.ClickFinishAnswer)
-            viewModel.onIntent(InterviewIntent.ReportRecordingSegmentFinalized(answerSegment))
+            viewModel.onIntent(InterviewIntent.Turn.ReportAnswerSpeechStarted)
+            viewModel.onIntent(InterviewIntent.Turn.ClickFinishAnswer)
+            viewModel.onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(answerSegment))
             runCurrent()
 
             val answerAudio =
@@ -71,7 +75,7 @@ class InterviewViewModelTurnTest {
                     .getValue(InterviewViewModelTestFixture.SESSION_ID)
                     .segments
                     .single { it.type == InterviewMediaSegmentType.ANSWER_AUDIO }
-            viewModel.onIntent(InterviewIntent.ReportAnswerRecordingCompleted(answerAudio))
+            viewModel.onIntent(InterviewIntent.Turn.ReportAnswerRecordingCompleted(answerAudio))
             runCurrent()
 
             assertEquals(1, fixture.submittedCommands.size)
@@ -80,7 +84,7 @@ class InterviewViewModelTurnTest {
             assertEquals(InterviewScreenState.QUESTION_PLAYING, viewModel.state.value.screenState)
             assertFalse(viewModel.state.value.isRequestInFlight)
 
-            viewModel.onIntent(InterviewIntent.ReportAppBackgrounded)
+            viewModel.onIntent(InterviewIntent.Recovery.ReportAppBackgrounded)
             runCurrent()
         }
 
