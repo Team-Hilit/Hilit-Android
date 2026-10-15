@@ -72,10 +72,10 @@ fun InterviewScreen(
     val microphonePermissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
-                viewModel.onIntent(InterviewIntent.ReportMicrophoneReady)
+                viewModel.onIntent(InterviewIntent.Preparation.ReportMicrophoneReady)
             } else {
                 viewModel.onIntent(
-                    InterviewIntent.ReportMicrophonePermissionDenied(
+                    InterviewIntent.Preparation.ReportMicrophonePermissionDenied(
                         permanentlyDenied =
                             activity?.let {
                                 !ActivityCompat.shouldShowRequestPermissionRationale(
@@ -90,10 +90,10 @@ fun InterviewScreen(
     val cameraPermissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
-                viewModel.onIntent(InterviewIntent.ReportCameraPermissionGranted)
+                viewModel.onIntent(InterviewIntent.Preparation.ReportCameraPermissionGranted)
             } else {
                 viewModel.onIntent(
-                    InterviewIntent.ReportCameraPermissionDenied(
+                    InterviewIntent.Preparation.ReportCameraPermissionDenied(
                         permanentlyDenied =
                             activity?.let {
                                 !ActivityCompat.shouldShowRequestPermissionRationale(
@@ -107,7 +107,9 @@ fun InterviewScreen(
         }
     val notificationPermissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            viewModel.onIntent(InterviewIntent.ReportUploadNotificationPermission(granted))
+            viewModel.onIntent(
+                InterviewIntent.Finalization.ReportUploadNotificationPermission(granted),
+            )
         }
     val openSettings =
         permissionManager.rememberAppSettingsLauncher(
@@ -115,13 +117,13 @@ fun InterviewScreen(
                 when (state.permanentlyDeniedPermission) {
                     InterviewPermission.CAMERA -> {
                         viewModel.onIntent(
-                            InterviewIntent.ReportCameraPermissionGranted,
+                            InterviewIntent.Preparation.ReportCameraPermissionGranted,
                         )
                     }
 
                     InterviewPermission.MICROPHONE -> {
                         viewModel.onIntent(
-                            InterviewIntent.ReportMicrophoneReady,
+                            InterviewIntent.Preparation.ReportMicrophoneReady,
                         )
                     }
 
@@ -138,13 +140,13 @@ fun InterviewScreen(
                 when (event) {
                     Lifecycle.Event.ON_START -> {
                         viewModel.onIntent(
-                            InterviewIntent.ReportAppForegrounded,
+                            InterviewIntent.Recovery.ReportAppForegrounded,
                         )
                     }
 
                     Lifecycle.Event.ON_STOP -> {
                         viewModel.onIntent(
-                            InterviewIntent.ReportAppBackgrounded,
+                            InterviewIntent.Recovery.ReportAppBackgrounded,
                         )
                     }
 
@@ -165,9 +167,9 @@ fun InterviewScreen(
             } else {
                 viewModel.onIntent(
                     if (connected) {
-                        InterviewIntent.ReportNetworkRestored
+                        InterviewIntent.Recovery.ReportNetworkRestored
                     } else {
-                        InterviewIntent.ReportNetworkDisconnected
+                        InterviewIntent.Recovery.ReportNetworkDisconnected
                     },
                 )
             }
@@ -179,13 +181,15 @@ fun InterviewScreen(
     }
 
     LaunchedEffect(viewModel) {
-        viewModel.onIntent(InterviewIntent.LoadInterview)
-        viewModel.onIntent(InterviewIntent.ConsumeRecoveryResult)
+        viewModel.onIntent(InterviewIntent.Preparation.LoadInterview)
+        viewModel.onIntent(InterviewIntent.Recovery.ConsumeRecoveryResult)
         viewModel.effect.collect { effect ->
             when (effect) {
                 InterviewEffect.RequestCameraPermission -> {
                     if (permissionManager.isGranted(AppPermission.CAMERA)) {
-                        viewModel.onIntent(InterviewIntent.ReportCameraPermissionGranted)
+                        viewModel.onIntent(
+                            InterviewIntent.Preparation.ReportCameraPermissionGranted,
+                        )
                     } else {
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     }
@@ -193,7 +197,7 @@ fun InterviewScreen(
 
                 InterviewEffect.RequestMicrophonePermission -> {
                     if (permissionManager.isGranted(AppPermission.RECORD_AUDIO)) {
-                        viewModel.onIntent(InterviewIntent.ReportMicrophoneReady)
+                        viewModel.onIntent(InterviewIntent.Preparation.ReportMicrophoneReady)
                     } else {
                         microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                     }
@@ -259,7 +263,9 @@ fun InterviewScreen(
                             Manifest.permission.POST_NOTIFICATIONS,
                         )
                     } else {
-                        viewModel.onIntent(InterviewIntent.ReportUploadNotificationPermission(true))
+                        viewModel.onIntent(
+                            InterviewIntent.Finalization.ReportUploadNotificationPermission(true),
+                        )
                     }
                 }
 
@@ -274,7 +280,7 @@ fun InterviewScreen(
 
                 InterviewEffect.CheckUploadNetwork -> {
                     viewModel.onIntent(
-                        InterviewIntent.ReportUploadNetworkMetered(
+                        InterviewIntent.Finalization.ReportUploadNetworkMetered(
                             effectHandler.isUploadNetworkMetered(),
                         ),
                     )
@@ -286,13 +292,16 @@ fun InterviewScreen(
                             effect.sessionId,
                             effect.networkPolicy,
                         )
-                    }.onSuccess { viewModel.onIntent(InterviewIntent.ReportVideoUploadEnqueued) }
-                        .onFailure { error ->
-                            if (error is CancellationException) throw error
-                            viewModel.onIntent(
-                                InterviewIntent.ReportVideoUploadEnqueueFailure,
-                            )
-                        }
+                    }.onSuccess {
+                        viewModel.onIntent(
+                            InterviewIntent.Finalization.ReportVideoUploadEnqueued,
+                        )
+                    }.onFailure { error ->
+                        if (error is CancellationException) throw error
+                        viewModel.onIntent(
+                            InterviewIntent.Finalization.ReportVideoUploadEnqueueFailure,
+                        )
+                    }
                 }
 
                 is InterviewEffect.NavigateToError -> {
@@ -319,9 +328,9 @@ fun InterviewScreen(
             state.screenState == InterviewScreenState.QUESTION_PREPARING ||
             state.screenState == InterviewScreenState.START_GUIDE
         ) {
-            viewModel.onIntent(InterviewIntent.ClickPermissionDeniedBack)
+            viewModel.onIntent(InterviewIntent.Preparation.ClickPermissionDeniedBack)
         } else if (state.screenState != InterviewScreenState.FINISHING) {
-            viewModel.onIntent(InterviewIntent.ClickExitInterview)
+            viewModel.onIntent(InterviewIntent.Turn.ClickExitInterview)
         }
     }
 
@@ -329,9 +338,9 @@ fun InterviewScreen(
         InterviewCameraPreview(
             isCameraPermissionGranted = state.isCameraPermissionGranted,
             videoCapture = effectHandler.videoCapture,
-            onCameraReady = { viewModel.onIntent(InterviewIntent.ReportCameraReady) },
+            onCameraReady = { viewModel.onIntent(InterviewIntent.Preparation.ReportCameraReady) },
             onCameraBindingFailed = {
-                viewModel.onIntent(InterviewIntent.ReportCameraBindingFailure)
+                viewModel.onIntent(InterviewIntent.Preparation.ReportCameraBindingFailure)
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -344,26 +353,42 @@ fun InterviewScreen(
 
     if (state.showFinishConfirmation) {
         InterviewFinishModal(
-            onContinueClick = { viewModel.onIntent(InterviewIntent.DismissFinishInterview) },
-            onFinishClick = { viewModel.onIntent(InterviewIntent.ConfirmFinishInterview) },
+            onContinueClick = { viewModel.onIntent(InterviewIntent.Turn.DismissFinishInterview) },
+            onFinishClick = { viewModel.onIntent(InterviewIntent.Turn.ConfirmFinishInterview) },
         )
     }
     if (state.showEarlyExitWarning) {
         InterviewAbortModal(
-            onExitClick = { viewModel.onIntent(InterviewIntent.ConfirmEarlyExit) },
-            onContinueClick = { viewModel.onIntent(InterviewIntent.DismissEarlyExit) },
+            onExitClick = { viewModel.onIntent(InterviewIntent.Turn.ConfirmEarlyExit) },
+            onContinueClick = { viewModel.onIntent(InterviewIntent.Turn.DismissEarlyExit) },
         )
     }
     if (state.showMeteredUploadConfirmation) {
         InterviewMeteredUploadModal(
-            onUseMobileData = { viewModel.onIntent(InterviewIntent.ConfirmMeteredUpload) },
-            onWaitForWifi = { viewModel.onIntent(InterviewIntent.DismissMeteredUpload) },
+            onUseMobileData = {
+                viewModel.onIntent(
+                    InterviewIntent.Finalization.ConfirmMeteredUpload,
+                )
+            },
+            onWaitForWifi = {
+                viewModel.onIntent(
+                    InterviewIntent.Finalization.DismissMeteredUpload,
+                )
+            },
         )
     }
     if (state.finalizationFailure != null) {
         InterviewFinalizationFailureModal(
-            onExitClick = { viewModel.onIntent(InterviewIntent.ClickExitFinalization) },
-            onRetryClick = { viewModel.onIntent(InterviewIntent.ClickRetryFinalization) },
+            onExitClick = {
+                viewModel.onIntent(
+                    InterviewIntent.Finalization.ClickExitFinalization,
+                )
+            },
+            onRetryClick = {
+                viewModel.onIntent(
+                    InterviewIntent.Finalization.ClickRetryFinalization,
+                )
+            },
         )
     }
 }
@@ -389,11 +414,11 @@ fun InterviewContent(
                     interviewScreenState = state.screenState,
                     showOpenSettings = state.permanentlyDeniedPermission != null,
                     hasEnoughStorage = state.hasEnoughStorage,
-                    onInterviewStart = { onIntent(InterviewIntent.StartInterview) },
+                    onInterviewStart = { onIntent(InterviewIntent.Timing.StartInterview) },
                     onPermissionDeniedBack = {
-                        onIntent(InterviewIntent.ClickPermissionDeniedBack)
+                        onIntent(InterviewIntent.Preparation.ClickPermissionDeniedBack)
                     },
-                    onOpenSettings = { onIntent(InterviewIntent.ClickOpenSettings) },
+                    onOpenSettings = { onIntent(InterviewIntent.Preparation.ClickOpenSettings) },
                     modifier = Modifier.fillMaxSize().systemBarsPadding(),
                 )
             }
@@ -411,9 +436,9 @@ fun InterviewContent(
                     canFinishEarly = state.canFinishEarly,
                     hasSpeechStarted = state.hasSpeechStarted,
                     isQuestionAudioRetryVisible = state.isQuestionAudioRetryVisible,
-                    onRetryQuestion = { onIntent(InterviewIntent.ClickRetryQuestionAudio) },
-                    onFinishAnswer = { onIntent(InterviewIntent.ClickFinishAnswer) },
-                    onFinishRequest = { onIntent(InterviewIntent.ClickFinishInterview) },
+                    onRetryQuestion = { onIntent(InterviewIntent.Turn.ClickRetryQuestionAudio) },
+                    onFinishAnswer = { onIntent(InterviewIntent.Turn.ClickFinishAnswer) },
+                    onFinishRequest = { onIntent(InterviewIntent.Turn.ClickFinishInterview) },
                     modifier = Modifier.fillMaxSize().systemBarsPadding(),
                 )
             }

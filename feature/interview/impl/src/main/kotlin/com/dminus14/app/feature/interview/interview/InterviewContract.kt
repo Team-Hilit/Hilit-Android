@@ -42,117 +42,127 @@ enum class InterviewFinalizationFailure {
 }
 
 sealed interface InterviewIntent : MviIntent {
-    data object LoadInterview : InterviewIntent
+    sealed interface Preparation : InterviewIntent {
+        data object LoadInterview : Preparation
 
-    data object CheckCameraPermission : InterviewIntent
+        data object CheckCameraPermission : Preparation
 
-    data object ClickRetryDeviceCheck : InterviewIntent
+        data object ClickRetryDeviceCheck : Preparation
 
-    data object ClickOpenSettings : InterviewIntent
+        data object ClickOpenSettings : Preparation
 
-    data object ReportCameraPermissionGranted : InterviewIntent
+        data object ReportCameraPermissionGranted : Preparation
 
-    data object ReportCameraReady : InterviewIntent
+        data object ReportCameraReady : Preparation
 
-    data class ReportCameraPermissionDenied(
-        val permanentlyDenied: Boolean,
-    ) : InterviewIntent
+        data class ReportCameraPermissionDenied(
+            val permanentlyDenied: Boolean,
+        ) : Preparation
 
-    data object ReportCameraBindingFailure : InterviewIntent
+        data object ReportCameraBindingFailure : Preparation
 
-    data object ReportMicrophoneReady : InterviewIntent
+        data object ReportMicrophoneReady : Preparation
 
-    data class ReportMicrophonePermissionDenied(
-        val permanentlyDenied: Boolean,
-    ) : InterviewIntent
+        data class ReportMicrophonePermissionDenied(
+            val permanentlyDenied: Boolean,
+        ) : Preparation
 
-    data object ReportMicrophoneFailure : InterviewIntent
+        data object ReportMicrophoneFailure : Preparation
 
-    data class ReportStorageAvailability(
-        val availableBytes: Long,
-    ) : InterviewIntent
+        data class ReportStorageAvailability(
+            val availableBytes: Long,
+        ) : Preparation
 
-    data object ClickPermissionDeniedBack : InterviewIntent
+        data object ClickPermissionDeniedBack : Preparation
+    }
 
-    data object StartInterview : InterviewIntent
+    sealed interface Timing : InterviewIntent {
+        data object StartInterview : Timing
 
-    data object ReportAppBackgrounded : InterviewIntent
+        data class UpdateElapsedTime(
+            val elapsedMillis: Long,
+        ) : Timing
 
-    data object ReportAppForegrounded : InterviewIntent
+        data object ReportHardCapReached : Timing
+    }
 
-    data class UpdateElapsedTime(
-        val elapsedMillis: Long,
-    ) : InterviewIntent
+    sealed interface Turn : InterviewIntent {
+        data object ReportQuestionPlaybackStarted : Turn
 
-    data object ReportHardCapReached : InterviewIntent
+        data object ReportQuestionPlaybackCompleted : Turn
 
-    data object ReportQuestionPlaybackStarted : InterviewIntent
+        data object ReportQuestionPlaybackFailure : Turn
 
-    data object ReportQuestionPlaybackCompleted : InterviewIntent
+        data object ClickRetryQuestionAudio : Turn
 
-    data object ReportQuestionPlaybackFailure : InterviewIntent
+        data object ReportAnswerSpeechStarted : Turn
 
-    data object ClickRetryQuestionAudio : InterviewIntent
+        data object ReportAnswerSilenceElapsed : Turn
 
-    data object ReportAnswerSpeechStarted : InterviewIntent
+        data object ClickFinishAnswer : Turn
 
-    data object ReportAnswerSilenceElapsed : InterviewIntent
+        data class ReportRecordingSegmentFinalized(
+            val segment: InterviewMediaSegment,
+        ) : Turn
 
-    data object ClickFinishAnswer : InterviewIntent
+        data class ReportAnswerRecordingCompleted(
+            val audioSegment: InterviewMediaSegment,
+        ) : Turn
 
-    data class ReportRecordingSegmentFinalized(
-        val segment: InterviewMediaSegment,
-    ) : InterviewIntent
+        data object ReportAnswerAudioMergeFailure : Turn
 
-    data class ReportAnswerRecordingCompleted(
-        val audioSegment: InterviewMediaSegment,
-    ) : InterviewIntent
+        data object ClickFinishInterview : Turn
 
-    data object ReportAnswerAudioMergeFailure : InterviewIntent
+        data object ConfirmFinishInterview : Turn
 
-    data object ReportRecordingFailure : InterviewIntent
+        data object DismissFinishInterview : Turn
 
-    data object ClickFinishInterview : InterviewIntent
+        data object ClickExitInterview : Turn
 
-    data object ConfirmFinishInterview : InterviewIntent
+        data object ConfirmEarlyExit : Turn
 
-    data object DismissFinishInterview : InterviewIntent
+        data object DismissEarlyExit : Turn
+    }
 
-    data object ClickExitInterview : InterviewIntent
+    sealed interface Finalization : InterviewIntent {
+        data object ReportRecordingFailure : Finalization
 
-    data object ConfirmEarlyExit : InterviewIntent
+        data object ConfirmMeteredUpload : Finalization
 
-    data object DismissEarlyExit : InterviewIntent
+        data object DismissMeteredUpload : Finalization
 
-    data object ConfirmMeteredUpload : InterviewIntent
+        data class ReportUploadNotificationPermission(
+            val isGranted: Boolean,
+        ) : Finalization
 
-    data object DismissMeteredUpload : InterviewIntent
+        data class ReportUploadNetworkMetered(
+            val isMetered: Boolean,
+        ) : Finalization
 
-    data class ReportUploadNotificationPermission(
-        val isGranted: Boolean,
-    ) : InterviewIntent
+        data object ReportVideoUploadEnqueued : Finalization
 
-    data class ReportUploadNetworkMetered(
-        val isMetered: Boolean,
-    ) : InterviewIntent
+        data object ReportVideoUploadEnqueueFailure : Finalization
 
-    data object ReportVideoUploadEnqueued : InterviewIntent
+        data object ClickRetryFinalization : Finalization
 
-    data object ReportVideoUploadEnqueueFailure : InterviewIntent
+        data object ClickExitFinalization : Finalization
 
-    data object ClickRetryFinalization : InterviewIntent
+        data object ReportWrapUpPlaybackCompleted : Finalization
 
-    data object ClickExitFinalization : InterviewIntent
+        data object ReportWrapUpPlaybackFailure : Finalization
+    }
 
-    data object ReportWrapUpPlaybackCompleted : InterviewIntent
+    sealed interface Recovery : InterviewIntent {
+        data object ReportAppBackgrounded : Recovery
 
-    data object ReportWrapUpPlaybackFailure : InterviewIntent
+        data object ReportAppForegrounded : Recovery
 
-    data object ReportNetworkDisconnected : InterviewIntent
+        data object ReportNetworkDisconnected : Recovery
 
-    data object ReportNetworkRestored : InterviewIntent
+        data object ReportNetworkRestored : Recovery
 
-    data object ConsumeRecoveryResult : InterviewIntent
+        data object ConsumeRecoveryResult : Recovery
+    }
 }
 
 data class InterviewState(
