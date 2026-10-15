@@ -30,8 +30,7 @@ fun InterviewReportScreen(
     val context = LocalContext.current
 
     LaunchedEffect(sessionId) {
-        viewModel.bindSessionId(sessionId)
-        viewModel.onIntent(InterviewReportIntent.Load)
+        viewModel.onIntent(InterviewReportIntent.Load(sessionId))
     }
     LaunchedEffect(Unit) {
         viewModel.effect.collect { effect ->

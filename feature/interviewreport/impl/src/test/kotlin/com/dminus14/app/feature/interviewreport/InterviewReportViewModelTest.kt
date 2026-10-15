@@ -56,8 +56,7 @@ class InterviewReportViewModelTest {
         runTest {
             val viewModel = viewModel(FakeInterviewRepository(listOf(readyReport())))
 
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
             advanceUntilIdle()
 
             val phase = viewModel.state.value.phase
@@ -73,8 +72,7 @@ class InterviewReportViewModelTest {
                 )
             val viewModel = viewModel(FakeInterviewRepository(listOf(insufficient)))
 
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
             advanceUntilIdle()
 
             val phase = viewModel.state.value.phase
@@ -89,8 +87,7 @@ class InterviewReportViewModelTest {
         runTest {
             val viewModel = viewModel(ThrowingInterviewRepository())
 
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
             advanceUntilIdle()
 
             assertEquals(Phase.Failed, viewModel.state.value.phase)
@@ -105,8 +102,7 @@ class InterviewReportViewModelTest {
             val unknown = readyReport().copy(status = InterviewReportStatus.UNKNOWN)
             val viewModel = viewModel(FakeInterviewRepository(listOf(unknown)))
 
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
             advanceUntilIdle()
 
             assertEquals(Phase.Failed, viewModel.state.value.phase)
@@ -115,11 +111,11 @@ class InterviewReportViewModelTest {
     @Test
     fun `sessionId 가 바인딩되지 않았으면 Loading 이 아니라 Failed 로 전이한다`() =
         runTest {
-            // bindSessionId 를 호출하지 않아 sessionId 가 기본값(0L)인 상태. 초기 phase 가
+            // 유효하지 않은 sessionId(0L)로 진입한 상태. 초기 phase 가
             // Loading 이라 load() 가 조용히 리턴하면 스피너에 영구 고착된다.
             val viewModel = viewModel(FakeInterviewRepository(listOf(readyReport())))
 
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(0L))
             advanceUntilIdle()
 
             assertEquals(Phase.Failed, viewModel.state.value.phase)
@@ -129,8 +125,7 @@ class InterviewReportViewModelTest {
     fun `하이라이트 선택 후 해제하면 selectedHighlight 가 초기화된다`() =
         runTest {
             val viewModel = viewModel(FakeInterviewRepository(listOf(readyReport())))
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
             advanceUntilIdle()
 
             viewModel.onIntent(InterviewReportIntent.ClickHighlight(0, 1))
@@ -154,8 +149,7 @@ class InterviewReportViewModelTest {
             val effects = mutableListOf<InterviewReportEffect>()
             val job = TestScope(dispatcher).launch { viewModel.effect.collect { effects += it } }
 
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
             advanceUntilIdle()
             viewModel.onIntent(InterviewReportIntent.ClickWatchVideo)
             advanceUntilIdle()
@@ -181,8 +175,7 @@ class InterviewReportViewModelTest {
             val effects = mutableListOf<InterviewReportEffect>()
             val job = TestScope(dispatcher).launch { viewModel.effect.collect { effects += it } }
 
-            viewModel.bindSessionId(5L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(5L))
             advanceUntilIdle()
             viewModel.onIntent(InterviewReportIntent.ClickWatchVideo)
             advanceUntilIdle()
@@ -213,8 +206,7 @@ class InterviewReportViewModelTest {
             val effects = mutableListOf<InterviewReportEffect>()
             val job = TestScope(dispatcher).launch { viewModel.effect.collect { effects += it } }
 
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
             advanceUntilIdle()
             viewModel.onIntent(InterviewReportIntent.ClickWatchVideo)
             advanceUntilIdle()
@@ -227,8 +219,7 @@ class InterviewReportViewModelTest {
     fun `SelectCard 인텐트는 selectedCardIndex 를 갱신한다`() =
         runTest {
             val viewModel = viewModel(FakeInterviewRepository(listOf(readyReport())))
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
             advanceUntilIdle()
 
             viewModel.onIntent(InterviewReportIntent.SelectCard(2))
@@ -240,8 +231,7 @@ class InterviewReportViewModelTest {
     fun `SelectGuestFeedback 인텐트는 selectedGuestFeedbackIndex 를 갱신한다`() =
         runTest {
             val viewModel = viewModel(FakeInterviewRepository(listOf(readyReport())))
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
             advanceUntilIdle()
 
             viewModel.onIntent(InterviewReportIntent.SelectGuestFeedback(1))
@@ -258,8 +248,7 @@ class InterviewReportViewModelTest {
                     expiry = InterviewVideoExpiry(expiresInSeconds = 3600L, expired = false),
                 )
             val viewModel = viewModel(repository)
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
             advanceUntilIdle()
 
             assertEquals(3600L, viewModel.state.value.videoExpirySeconds)
@@ -274,8 +263,7 @@ class InterviewReportViewModelTest {
                     expiry = InterviewVideoExpiry(expiresInSeconds = 0L, expired = true),
                 )
             val viewModel = viewModel(repository)
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportIntent.Load)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
             advanceUntilIdle()
 
             assertNull(viewModel.state.value.videoExpirySeconds)

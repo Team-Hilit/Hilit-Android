@@ -1,8 +1,8 @@
 package com.dminus14.app.feature.interviewreport.player
 
-import androidx.lifecycle.viewModelScope
 import com.dminus14.app.core.common.event.GlobalAppEvent
 import com.dminus14.app.core.common.event.GlobalErrorHandler
+import com.dminus14.app.core.common.mvi.MviReducer
 import com.dminus14.app.core.common.mvi.MviViewModel
 import com.dminus14.app.domain.exception.NetworkUnavailableException
 import com.dminus14.app.domain.exception.ServerException
@@ -16,7 +16,9 @@ import com.dminus14.app.feature.interviewreport.model.PlayerHighlightRefUiModel
 import com.dminus14.app.feature.interviewreport.model.PlayerScriptLineUiModel
 import com.dminus14.app.feature.interviewreport.model.PlayerSegmentUiModel
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 
 private const val MILLIS_PER_SECOND = 1000f
@@ -33,16 +35,14 @@ class InterviewReportPlayerViewModel
         >(
             InterviewReportPlayerState(),
         ) {
+        private val context = createContext(InterviewReportPlayerReducer)
         private var sessionId: Long = 0L
-
-        /** Screen 이 route args 로 넘겨준 sessionId 를 확정한다. 최초 1회만 유효. */
-        fun bindSessionId(sessionId: Long) {
-            if (this.sessionId == 0L) this.sessionId = sessionId
-        }
+        private var loadJob: Job? = null
 
         override fun onIntent(intent: InterviewReportPlayerIntent) {
             when (intent) {
-                InterviewReportPlayerIntent.Load -> {
+                is InterviewReportPlayerIntent.Load -> {
+                    if (sessionId == 0L) sessionId = intent.sessionId
                     load()
                 }
 
@@ -51,7 +51,7 @@ class InterviewReportPlayerViewModel
                 }
 
                 InterviewReportPlayerIntent.ToggleTranscript -> {
-                    reduce { copy(transcriptVisible = !transcriptVisible) }
+                    context.dispatch(InterviewReportPlayerMutation.TranscriptToggled)
                 }
             }
         }
@@ -61,30 +61,30 @@ class InterviewReportPlayerViewModel
                 // 초기 phase 가 Loading 이라, 여기서 조용히 빠져나가면 잘못된 route 인자로 진입한
                 // 사용자가 인디케이터만 보는 화면에 갇힌다(닫기 아이콘은 PlayerReady 안에만 있어
                 // 시스템 백 외에는 나갈 수단이 없음). Failed 로 보내 탭으로 닫을 수 있게 한다.
-                reduce { copy(phase = InterviewReportPlayerState.Phase.Failed) }
+                context.dispatch(InterviewReportPlayerMutation.LoadFailed)
                 return
             }
-            reduce { copy(phase = InterviewReportPlayerState.Phase.Loading) }
-            viewModelScope.launch {
-                getInterviewReport(sessionId)
-                    .onSuccess { report ->
-                        reduce {
-                            copy(
-                                phase =
-                                    InterviewReportPlayerState.Phase.Ready(
-                                        report.toPlayerContent(),
-                                    ),
+            loadJob?.cancel()
+            context.dispatch(InterviewReportPlayerMutation.LoadStarted)
+            loadJob =
+                context.launch {
+                    getInterviewReport(sessionId)
+                        .onSuccess { report ->
+                            currentCoroutineContext().ensureActive()
+                            val content = report.toPlayerContent()
+                            context.dispatch(
+                                InterviewReportPlayerMutation.ContentReceived(content),
                             )
+                        }.onFailure { error ->
+                            handleCommonError(error)
                         }
-                    }.onFailure { error ->
-                        handleCommonError(error)
-                    }
-            }
+                }
         }
 
         // 아래 에러 처리 사항은 임시입니다. 공통 처리 기획자 문의 모든 ViewModel 일괄 수정 예정
         private suspend fun handleCommonError(error: Throwable) {
-            reduce { copy(phase = InterviewReportPlayerState.Phase.Failed) }
+            currentCoroutineContext().ensureActive()
+            context.dispatch(InterviewReportPlayerMutation.LoadFailed)
             when {
                 error is NetworkUnavailableException -> {
                     GlobalErrorHandler.emit(GlobalAppEvent.ShowNetworkErrorAndExit)
@@ -157,3 +157,42 @@ class InterviewReportPlayerViewModel
 
         private fun Float.toMillis(): Long = (this * MILLIS_PER_SECOND).toLong()
     }
+
+private sealed interface InterviewReportPlayerMutation {
+    data object TranscriptToggled : InterviewReportPlayerMutation
+
+    data object LoadStarted : InterviewReportPlayerMutation
+
+    data object LoadFailed : InterviewReportPlayerMutation
+
+    data class ContentReceived(
+        val content: PlayerContentUiModel,
+    ) : InterviewReportPlayerMutation
+}
+
+private object InterviewReportPlayerReducer :
+    MviReducer<InterviewReportPlayerState, InterviewReportPlayerMutation> {
+    override fun reduce(
+        state: InterviewReportPlayerState,
+        mutation: InterviewReportPlayerMutation,
+    ): InterviewReportPlayerState =
+        when (mutation) {
+            InterviewReportPlayerMutation.TranscriptToggled -> {
+                state.copy(transcriptVisible = !state.transcriptVisible)
+            }
+
+            InterviewReportPlayerMutation.LoadStarted -> {
+                state.copy(phase = InterviewReportPlayerState.Phase.Loading)
+            }
+
+            InterviewReportPlayerMutation.LoadFailed -> {
+                state.copy(phase = InterviewReportPlayerState.Phase.Failed)
+            }
+
+            is InterviewReportPlayerMutation.ContentReceived -> {
+                state.copy(
+                    phase = InterviewReportPlayerState.Phase.Ready(mutation.content),
+                )
+            }
+        }
+}
