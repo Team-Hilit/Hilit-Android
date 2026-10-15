@@ -5,6 +5,7 @@ import com.dminus14.designsystem.component.button.HilitFixedBottomButton
 import com.dminus14.designsystem.component.button.HilitFixedBottomDualButton
 import com.dminus14.designsystem.component.modal.HilitModal
 import com.dminus14.designsystem.component.modal.HilitModalType
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.SessionPreparation as SessionIntent
 
 /**
  * Preload(세션 생성/준비) 실패 안내 다이얼로그. 그 외 실패는 Preload 화면 아래
@@ -24,7 +25,9 @@ internal fun OnBoardingPreloadFailureDialog(
             HilitFixedBottomButton(
                 text = "확인",
                 onClick = {
-                    onIntent(OnBoardingInterviewIntent.ClickPreloadFailureAcknowledged)
+                    onIntent(
+                        SessionIntent.ClickPreloadFailureAcknowledged,
+                    )
                 },
             )
         },
@@ -47,10 +50,14 @@ internal fun OnBoardingRelevanceFailDialog(onIntent: (OnBoardingInterviewIntent)
                 leftText = "집중 프로젝트 없이 진행",
                 rightText = "포트폴리오 다시 올리기",
                 onLeftClick = {
-                    onIntent(OnBoardingInterviewIntent.ClickRelevanceProceedWithoutMainProject)
+                    onIntent(
+                        SessionIntent.ClickRelevanceProceedWithoutMainProject,
+                    )
                 },
                 onRightClick = {
-                    onIntent(OnBoardingInterviewIntent.ClickRelevanceRetryPortfolio)
+                    onIntent(
+                        SessionIntent.ClickRelevanceRetryPortfolio,
+                    )
                 },
             )
         },

@@ -25,7 +25,7 @@ class InterviewViewModelPreparationTest {
             val fixture = readyFixture()
             val viewModel = fixture.createViewModel()
 
-            viewModel.onIntent(InterviewIntent.LoadInterview)
+            viewModel.onIntent(InterviewIntent.Preparation.LoadInterview)
             runCurrent()
             viewModel.completeClientPreparation()
             runCurrent()
@@ -57,7 +57,7 @@ class InterviewViewModelPreparationTest {
             val fixture = readyFixture()
             val viewModel = fixture.createViewModel()
 
-            viewModel.onIntent(InterviewIntent.LoadInterview)
+            viewModel.onIntent(InterviewIntent.Preparation.LoadInterview)
             runCurrent()
             advanceTimeBy(InterviewConstants.PREPARATION_STAGE_MIN_DURATION_MILLIS)
             runCurrent()
@@ -81,19 +81,21 @@ class InterviewViewModelPreparationTest {
     fun `준비 완료 화면에서 준비 조건이 해제되면 시작 안내로 전환하지 않는다`() =
         runTest(mainDispatcherRule.dispatcher) {
             val viewModel = readyFixture().createViewModel()
-            viewModel.onIntent(InterviewIntent.LoadInterview)
+            viewModel.onIntent(InterviewIntent.Preparation.LoadInterview)
             runCurrent()
             viewModel.completeClientPreparation()
             advanceTimeBy(InterviewConstants.PREPARATION_STAGE_MIN_DURATION_MILLIS)
             runCurrent()
             assertEquals(InterviewScreenState.QUESTION_PREPARING, viewModel.state.value.screenState)
 
-            viewModel.onIntent(InterviewIntent.ReportStorageAvailability(0L))
+            viewModel.onIntent(InterviewIntent.Preparation.ReportStorageAvailability(0L))
             advanceTimeBy(InterviewConstants.PREPARATION_STAGE_MIN_DURATION_MILLIS)
             runCurrent()
             assertEquals(InterviewScreenState.QUESTION_PREPARING, viewModel.state.value.screenState)
 
-            viewModel.onIntent(InterviewIntent.ReportStorageAvailability(Long.MAX_VALUE))
+            viewModel.onIntent(
+                InterviewIntent.Preparation.ReportStorageAvailability(Long.MAX_VALUE),
+            )
             runCurrent()
             assertEquals(InterviewScreenState.START_GUIDE, viewModel.state.value.screenState)
         }
@@ -102,12 +104,12 @@ class InterviewViewModelPreparationTest {
     fun `백그라운드에 머문 시간도 준비 화면 유지 시간에 포함한다`() =
         runTest(mainDispatcherRule.dispatcher) {
             val viewModel = readyFixture().createViewModel()
-            viewModel.onIntent(InterviewIntent.LoadInterview)
+            viewModel.onIntent(InterviewIntent.Preparation.LoadInterview)
             runCurrent()
             viewModel.completeClientPreparation()
 
             advanceTimeBy(1_000L)
-            viewModel.onIntent(InterviewIntent.ReportAppBackgrounded)
+            viewModel.onIntent(InterviewIntent.Recovery.ReportAppBackgrounded)
             advanceTimeBy(2_000L)
             runCurrent()
             assertEquals(InterviewScreenState.QUESTION_PREPARING, viewModel.state.value.screenState)
@@ -121,7 +123,7 @@ class InterviewViewModelPreparationTest {
     fun `새 ViewModel은 준비 화면 유지 시간을 처음부터 측정한다`() =
         runTest(mainDispatcherRule.dispatcher) {
             val firstViewModel = readyFixture().createViewModel()
-            firstViewModel.onIntent(InterviewIntent.LoadInterview)
+            firstViewModel.onIntent(InterviewIntent.Preparation.LoadInterview)
             runCurrent()
             firstViewModel.completeClientPreparation()
             advanceTimeBy(InterviewConstants.PREPARATION_STAGE_MIN_DURATION_MILLIS)
@@ -132,7 +134,7 @@ class InterviewViewModelPreparationTest {
             )
 
             val recreatedViewModel = readyFixture().createViewModel()
-            recreatedViewModel.onIntent(InterviewIntent.LoadInterview)
+            recreatedViewModel.onIntent(InterviewIntent.Preparation.LoadInterview)
             runCurrent()
             recreatedViewModel.completeClientPreparation()
             runCurrent()
@@ -173,9 +175,9 @@ class InterviewViewModelPreparationTest {
         }
 
     private fun InterviewViewModel.completeClientPreparation() {
-        onIntent(InterviewIntent.ReportCameraPermissionGranted)
-        onIntent(InterviewIntent.ReportCameraReady)
-        onIntent(InterviewIntent.ReportMicrophoneReady)
-        onIntent(InterviewIntent.ReportStorageAvailability(Long.MAX_VALUE))
+        onIntent(InterviewIntent.Preparation.ReportCameraPermissionGranted)
+        onIntent(InterviewIntent.Preparation.ReportCameraReady)
+        onIntent(InterviewIntent.Preparation.ReportMicrophoneReady)
+        onIntent(InterviewIntent.Preparation.ReportStorageAvailability(Long.MAX_VALUE))
     }
 }

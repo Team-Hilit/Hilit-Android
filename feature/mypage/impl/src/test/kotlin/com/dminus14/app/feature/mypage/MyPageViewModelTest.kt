@@ -258,7 +258,7 @@ class MyPageViewModelTest {
             viewModel.onIntent(MyPageIntent.Load)
             advanceUntilIdle()
 
-            viewModel.onIntent(MyPageIntent.SelectPortfolioFile("content://sample"))
+            viewModel.onIntent(MyPageIntent.Portfolio.SelectPortfolioFile("content://sample"))
             advanceUntilIdle()
 
             assertEquals(listOf("portfolio-1"), repository.deletedPortfolioIds)
@@ -277,7 +277,7 @@ class MyPageViewModelTest {
                 )
             val viewModel = createViewModel(portfolioFileReader = reader)
 
-            viewModel.onIntent(MyPageIntent.SelectPortfolioFile("content://sample"))
+            viewModel.onIntent(MyPageIntent.Portfolio.SelectPortfolioFile("content://sample"))
             advanceUntilIdle()
 
             assertEquals(
@@ -302,7 +302,7 @@ class MyPageViewModelTest {
             viewModel.onIntent(MyPageIntent.Load)
             advanceUntilIdle()
 
-            viewModel.onIntent(MyPageIntent.SelectPortfolioFile("content://sample"))
+            viewModel.onIntent(MyPageIntent.Portfolio.SelectPortfolioFile("content://sample"))
             advanceUntilIdle()
 
             assertEquals(1, repository.uploadCallCount)
@@ -323,11 +323,11 @@ class MyPageViewModelTest {
             val viewModel = createViewModel(portfolioRepository = repository)
             viewModel.onIntent(MyPageIntent.Load)
             advanceUntilIdle()
-            viewModel.onIntent(MyPageIntent.SelectPortfolioFile("content://sample"))
+            viewModel.onIntent(MyPageIntent.Portfolio.SelectPortfolioFile("content://sample"))
             advanceUntilIdle()
             check(viewModel.state.value.portfolioState is MyPagePortfolioState.Completed)
 
-            viewModel.onIntent(MyPageIntent.ClickPortfolioDelete)
+            viewModel.onIntent(MyPageIntent.Portfolio.ClickPortfolioDelete)
 
             assertEquals(MyPageModalType.PortfolioDelete, viewModel.state.value.modalType)
             assertTrue(repository.deletedPortfolioIds.none { it == "new-id" })
@@ -348,12 +348,12 @@ class MyPageViewModelTest {
 
             // UnconfinedTestDispatcher는 delay() 직전까지 즉시 실행하므로, 폴링이 첫 delay에서
             // 멈춘 이 시점은 접수(202) 이전 전송 중 상태다.
-            viewModel.onIntent(MyPageIntent.SelectPortfolioFile("content://sample"))
+            viewModel.onIntent(MyPageIntent.Portfolio.SelectPortfolioFile("content://sample"))
             val uploading = viewModel.state.value.portfolioState
             assertTrue(uploading is MyPagePortfolioState.Uploading)
             assertNull((uploading as MyPagePortfolioState.Uploading).portfolioId)
 
-            viewModel.onIntent(MyPageIntent.ClickUploadCancel)
+            viewModel.onIntent(MyPageIntent.Portfolio.ClickUploadCancel)
             advanceUntilIdle()
 
             assertTrue(repository.deletedPortfolioIds.isEmpty())
@@ -374,9 +374,9 @@ class MyPageViewModelTest {
             viewModel.onIntent(MyPageIntent.Load)
             advanceUntilIdle()
             // 폴링이 첫 delay에서 멈춘 접수 직후 시점에 취소한다.
-            viewModel.onIntent(MyPageIntent.SelectPortfolioFile("content://sample"))
+            viewModel.onIntent(MyPageIntent.Portfolio.SelectPortfolioFile("content://sample"))
 
-            viewModel.onIntent(MyPageIntent.ClickUploadCancel)
+            viewModel.onIntent(MyPageIntent.Portfolio.ClickUploadCancel)
             advanceUntilIdle()
 
             assertEquals(listOf("new-id"), repository.deletedPortfolioIds)
@@ -396,9 +396,9 @@ class MyPageViewModelTest {
             val viewModel = createViewModel(portfolioRepository = repository)
             viewModel.onIntent(MyPageIntent.Load)
             advanceUntilIdle()
-            viewModel.onIntent(MyPageIntent.SelectPortfolioFile("content://sample"))
+            viewModel.onIntent(MyPageIntent.Portfolio.SelectPortfolioFile("content://sample"))
 
-            viewModel.onIntent(MyPageIntent.ClickUploadCancel)
+            viewModel.onIntent(MyPageIntent.Portfolio.ClickUploadCancel)
             advanceUntilIdle()
 
             assertTrue(repository.deletedPortfolioIds.isEmpty())
@@ -419,9 +419,9 @@ class MyPageViewModelTest {
             val effectJob = launch { viewModel.effect.collect(effects::add) }
             viewModel.onIntent(MyPageIntent.Load)
             advanceUntilIdle()
-            viewModel.onIntent(MyPageIntent.SelectPortfolioFile("content://sample"))
+            viewModel.onIntent(MyPageIntent.Portfolio.SelectPortfolioFile("content://sample"))
 
-            viewModel.onIntent(MyPageIntent.ClickUploadCancel)
+            viewModel.onIntent(MyPageIntent.Portfolio.ClickUploadCancel)
             advanceUntilIdle()
 
             assertFalse(viewModel.state.value.isSubmitting)
@@ -438,7 +438,7 @@ class MyPageViewModelTest {
             viewModel.onIntent(MyPageIntent.Load)
             advanceUntilIdle()
 
-            viewModel.onIntent(MyPageIntent.ClickPortfolioDelete)
+            viewModel.onIntent(MyPageIntent.Portfolio.ClickPortfolioDelete)
 
             assertEquals(
                 MyPageModalType.PortfolioDeleteUnavailable,
@@ -457,7 +457,7 @@ class MyPageViewModelTest {
             viewModel.onIntent(MyPageIntent.Load)
             advanceUntilIdle()
 
-            viewModel.onIntent(MyPageIntent.ClickPortfolioReupload)
+            viewModel.onIntent(MyPageIntent.Portfolio.ClickPortfolioReupload)
 
             assertEquals(
                 MyPageModalType.PortfolioReuploadUnavailable,
@@ -473,7 +473,7 @@ class MyPageViewModelTest {
             val viewModel = createViewModel()
             val effect = async(start = CoroutineStart.UNDISPATCHED) { viewModel.effect.first() }
 
-            viewModel.onIntent(MyPageIntent.ClickUpload)
+            viewModel.onIntent(MyPageIntent.Portfolio.ClickUpload)
 
             assertEquals(MyPageEffect.PortfolioSelectionRequested, effect.await())
             assertEquals(null, viewModel.state.value.modalType)
@@ -492,7 +492,7 @@ class MyPageViewModelTest {
                 )
             val effect = async(start = CoroutineStart.UNDISPATCHED) { viewModel.effect.first() }
 
-            viewModel.onIntent(MyPageIntent.ClickLogout)
+            viewModel.onIntent(MyPageIntent.Account.ClickLogout)
             viewModel.onIntent(MyPageIntent.ConfirmModal)
 
             assertEquals(MyPageEffect.LogoutCompleted, effect.await())
@@ -517,7 +517,7 @@ class MyPageViewModelTest {
             viewModel.onIntent(MyPageIntent.Load)
             advanceUntilIdle()
 
-            viewModel.onIntent(MyPageIntent.ClickPortfolioDelete)
+            viewModel.onIntent(MyPageIntent.Portfolio.ClickPortfolioDelete)
             viewModel.onIntent(MyPageIntent.ConfirmModal)
             advanceUntilIdle()
 
@@ -535,7 +535,7 @@ class MyPageViewModelTest {
             val effects = mutableListOf<MyPageEffect>()
             val effectJob = launch { viewModel.effect.collect(effects::add) }
 
-            viewModel.onIntent(MyPageIntent.ClickWithdrawal)
+            viewModel.onIntent(MyPageIntent.Account.ClickWithdrawal)
             viewModel.onIntent(MyPageIntent.ConfirmModal)
             viewModel.onIntent(MyPageIntent.ConfirmModal)
             advanceUntilIdle()
@@ -552,7 +552,7 @@ class MyPageViewModelTest {
             val userRepository = FakeUserRepository()
             val viewModel = createViewModel(userRepository = userRepository)
 
-            viewModel.onIntent(MyPageIntent.ClickWithdrawal)
+            viewModel.onIntent(MyPageIntent.Account.ClickWithdrawal)
             assertEquals(MyPageModalType.WithdrawalNotice, viewModel.state.value.modalType)
 
             viewModel.onIntent(MyPageIntent.ConfirmModal)
@@ -571,7 +571,7 @@ class MyPageViewModelTest {
             val withdrawGate = CompletableDeferred<Unit>()
             val userRepository = FakeUserRepository(withdrawGate = withdrawGate)
             val viewModel = createViewModel(userRepository = userRepository)
-            viewModel.onIntent(MyPageIntent.ClickWithdrawal)
+            viewModel.onIntent(MyPageIntent.Account.ClickWithdrawal)
             viewModel.onIntent(MyPageIntent.ConfirmModal)
 
             viewModel.onIntent(MyPageIntent.ConfirmModal)
@@ -591,7 +591,7 @@ class MyPageViewModelTest {
             viewModel.onIntent(MyPageIntent.Load)
             advanceUntilIdle()
 
-            viewModel.onIntent(MyPageIntent.ClickWithdrawal)
+            viewModel.onIntent(MyPageIntent.Account.ClickWithdrawal)
 
             assertEquals(MyPageModalType.WithdrawalBlocked, viewModel.state.value.modalType)
         }
@@ -605,7 +605,7 @@ class MyPageViewModelTest {
             viewModel.onIntent(MyPageIntent.Load)
             advanceUntilIdle()
 
-            viewModel.onIntent(MyPageIntent.ClickTicketInfo)
+            viewModel.onIntent(MyPageIntent.Account.ClickTicketInfo)
 
             assertFalse(viewModel.state.value.isTicketInfoTooltipVisible)
         }

@@ -15,6 +15,7 @@ import com.dminus14.designsystem.component.tag.TagColorType
 import com.dminus14.designsystem.component.text.withHilitTextHighlight
 import com.dminus14.designsystem.component.textfield.HilitJDTextField
 import com.dminus14.designsystem.theme.HilitTheme
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.Flow as FlowIntent
 
 private val SubtitleToLabelSpacing = 30.dp
 private val LabelToFieldSpacing = 10.dp
@@ -58,7 +59,11 @@ fun OnBoardingMainProjectStep(
 
             HilitJDTextField(
                 value = text,
-                onValueChange = { onIntent(OnBoardingInterviewIntent.MainProjectTextChange(it)) },
+                onValueChange = {
+                    onIntent(
+                        FlowIntent.MainProjectTextChange(it),
+                    )
+                },
                 placeholder = MAIN_PROJECT_PLACEHOLDER,
                 maxLength = MAIN_PROJECT_MAX_LENGTH,
                 // 서버 연관성 판단(FREETEXT_NOT_RELEVANT) 등 필드 밖 오류를 subtext 슬롯에 노출.

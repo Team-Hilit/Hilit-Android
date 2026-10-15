@@ -65,6 +65,7 @@ internal class InterviewViewModelTestFixture {
             summaryQuestion = null,
         )
     var submitResult: SubmitAnswerResult? = null
+    var abandonCallCount = 0
     var abandonResult: InterviewAbandon? = null
     val manifests = mutableMapOf<Long, InterviewMediaManifest>()
     val submittedCommands = mutableListOf<SubmitInterviewAnswerCommand>()
@@ -235,6 +236,7 @@ internal class InterviewViewModelTestFixture {
                 }
 
                 "abandon" -> {
+                    abandonCallCount += 1
                     checkNotNull(abandonResult)
                 }
 

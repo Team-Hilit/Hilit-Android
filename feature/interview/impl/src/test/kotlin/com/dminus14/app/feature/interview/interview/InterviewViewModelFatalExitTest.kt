@@ -43,9 +43,9 @@ class InterviewViewModelFatalExitTest {
             fixture.saveManifestFailure = IllegalStateException("synthetic save failure")
             fixture.successfulManifestSavesBeforeFailure = 1
 
-            viewModel.onIntent(InterviewIntent.ReportAnswerRecordingCompleted(answerAudio))
+            viewModel.onIntent(InterviewIntent.Turn.ReportAnswerRecordingCompleted(answerAudio))
             runCurrent()
-            viewModel.onIntent(InterviewIntent.ReportAppBackgrounded)
+            viewModel.onIntent(InterviewIntent.Recovery.ReportAppBackgrounded)
 
             assertFalse(viewModel.state.value.isRequestInFlight)
             assertEquals(1, fixture.fatalPromptCount)
@@ -73,9 +73,9 @@ class InterviewViewModelFatalExitTest {
             backgroundScope.launch { viewModel.effect.toList(effects) }
             val answerAudio = prepareRecordedAnswer(viewModel, fixture)
 
-            viewModel.onIntent(InterviewIntent.ReportAnswerRecordingCompleted(answerAudio))
+            viewModel.onIntent(InterviewIntent.Turn.ReportAnswerRecordingCompleted(answerAudio))
             runCurrent()
-            viewModel.onIntent(InterviewIntent.ReportAppBackgrounded)
+            viewModel.onIntent(InterviewIntent.Recovery.ReportAppBackgrounded)
 
             assertFalse(viewModel.state.value.isRequestInFlight)
             assertEquals(1, fixture.submittedCommands.size)
@@ -91,13 +91,13 @@ class InterviewViewModelFatalExitTest {
             val viewModel = fixture.createViewModel()
             prepareRecordedAnswer(viewModel, fixture)
 
-            viewModel.onIntent(InterviewIntent.ClickFinishInterview)
-            viewModel.onIntent(InterviewIntent.ClickExitInterview)
+            viewModel.onIntent(InterviewIntent.Turn.ClickFinishInterview)
+            viewModel.onIntent(InterviewIntent.Turn.ClickExitInterview)
             assertEquals(true, viewModel.state.value.showFinishConfirmation)
             assertEquals(true, viewModel.state.value.showEarlyExitWarning)
 
-            viewModel.onIntent(InterviewIntent.ReportHardCapReached)
-            viewModel.onIntent(InterviewIntent.ReportAppBackgrounded)
+            viewModel.onIntent(InterviewIntent.Timing.ReportHardCapReached)
+            viewModel.onIntent(InterviewIntent.Recovery.ReportAppBackgrounded)
 
             assertFalse(viewModel.state.value.showFinishConfirmation)
             assertFalse(viewModel.state.value.showEarlyExitWarning)
@@ -124,11 +124,11 @@ class InterviewViewModelFatalExitTest {
                 }
             val viewModel = fixture.createViewModel()
             val answerAudio = prepareRecordedAnswer(viewModel, fixture)
-            viewModel.onIntent(InterviewIntent.ReportHardCapReached)
+            viewModel.onIntent(InterviewIntent.Timing.ReportHardCapReached)
 
-            viewModel.onIntent(InterviewIntent.ReportAnswerRecordingCompleted(answerAudio))
+            viewModel.onIntent(InterviewIntent.Turn.ReportAnswerRecordingCompleted(answerAudio))
             runCurrent()
-            viewModel.onIntent(InterviewIntent.ReportAppBackgrounded)
+            viewModel.onIntent(InterviewIntent.Recovery.ReportAppBackgrounded)
 
             assertEquals(1, fixture.submittedCommands.size)
             assertEquals(
@@ -165,27 +165,27 @@ class InterviewViewModelFatalExitTest {
                 currentQuestionId = QUESTION_ID,
                 segments = listOf(questionSegment),
             )
-        viewModel.onIntent(InterviewIntent.LoadInterview)
+        viewModel.onIntent(InterviewIntent.Preparation.LoadInterview)
         runCurrent()
-        viewModel.onIntent(InterviewIntent.ReportCameraPermissionGranted)
-        viewModel.onIntent(InterviewIntent.ReportCameraReady)
-        viewModel.onIntent(InterviewIntent.ReportMicrophoneReady)
-        viewModel.onIntent(InterviewIntent.ReportStorageAvailability(Long.MAX_VALUE))
+        viewModel.onIntent(InterviewIntent.Preparation.ReportCameraPermissionGranted)
+        viewModel.onIntent(InterviewIntent.Preparation.ReportCameraReady)
+        viewModel.onIntent(InterviewIntent.Preparation.ReportMicrophoneReady)
+        viewModel.onIntent(InterviewIntent.Preparation.ReportStorageAvailability(Long.MAX_VALUE))
         advanceTimeBy(InterviewConstants.PREPARATION_STAGE_MIN_DURATION_MILLIS * 2L)
         runCurrent()
-        viewModel.onIntent(InterviewIntent.StartInterview)
+        viewModel.onIntent(InterviewIntent.Timing.StartInterview)
         runCurrent()
-        viewModel.onIntent(InterviewIntent.ReportQuestionPlaybackCompleted)
-        viewModel.onIntent(InterviewIntent.ReportRecordingSegmentFinalized(questionSegment))
+        viewModel.onIntent(InterviewIntent.Turn.ReportQuestionPlaybackCompleted)
+        viewModel.onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(questionSegment))
         runCurrent()
 
         val answerSegment = segment(1, InterviewMediaSegmentType.ANSWER_VIDEO)
         val manifest = fixture.manifests.getValue(InterviewViewModelTestFixture.SESSION_ID)
         fixture.manifests[InterviewViewModelTestFixture.SESSION_ID] =
             manifest.copy(nextSequence = 2, segments = manifest.segments + answerSegment)
-        viewModel.onIntent(InterviewIntent.ReportAnswerSpeechStarted)
-        viewModel.onIntent(InterviewIntent.ClickFinishAnswer)
-        viewModel.onIntent(InterviewIntent.ReportRecordingSegmentFinalized(answerSegment))
+        viewModel.onIntent(InterviewIntent.Turn.ReportAnswerSpeechStarted)
+        viewModel.onIntent(InterviewIntent.Turn.ClickFinishAnswer)
+        viewModel.onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(answerSegment))
         runCurrent()
         return fixture.manifests
             .getValue(InterviewViewModelTestFixture.SESSION_ID)

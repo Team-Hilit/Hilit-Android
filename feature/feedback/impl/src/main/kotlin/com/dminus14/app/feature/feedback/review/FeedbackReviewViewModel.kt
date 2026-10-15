@@ -1,11 +1,11 @@
 package com.dminus14.app.feature.feedback.review
 
-import androidx.lifecycle.viewModelScope
 import com.dminus14.app.core.common.event.GlobalAppEvent
 import com.dminus14.app.core.common.event.GlobalErrorHandler
 import com.dminus14.app.core.common.modal.GlobalModalRequest
 import com.dminus14.app.core.common.modal.GlobalModalResult
 import com.dminus14.app.core.common.modal.showGlobalModal
+import com.dminus14.app.core.common.mvi.MviReducer
 import com.dminus14.app.core.common.mvi.MviViewModel
 import com.dminus14.app.domain.exception.GuestFeedbackAlreadySubmittedException
 import com.dminus14.app.domain.exception.GuestFeedbackCapacityFullException
@@ -25,7 +25,9 @@ import com.dminus14.app.feature.feedback.session.GuestFeedbackCommentEditor
 import com.dminus14.app.feature.feedback.session.GuestFeedbackFlowSession
 import com.dminus14.app.feature.feedback.session.MAX_COMMENT_LENGTH
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 
 @HiltViewModel
@@ -37,6 +39,7 @@ class FeedbackReviewViewModel
     ) : MviViewModel<FeedbackReviewIntent, FeedbackReviewState, FeedbackReviewEffect>(
             FeedbackReviewState(),
         ) {
+        private val context = createContext(FeedbackReviewReducer)
         private val commentEditor = GuestFeedbackCommentEditor(session)
         private var isConfirmationPending = false
 
@@ -49,7 +52,7 @@ class FeedbackReviewViewModel
                 }
 
                 FeedbackReviewIntent.ReplayVideoClicked -> {
-                    sendEffect(
+                    context.sendEffect(
                         FeedbackReviewEffect.ReplayRequested,
                     )
                 }
@@ -59,11 +62,7 @@ class FeedbackReviewViewModel
                 }
 
                 is FeedbackReviewIntent.CommentChanged -> {
-                    reduce {
-                        copy(
-                            editingValue = intent.value.take(MAX_COMMENT_LENGTH),
-                        )
-                    }
+                    context.dispatch(FeedbackReviewMutation.CommentChanged(intent.value))
                 }
 
                 FeedbackReviewIntent.CommentConfirmed -> {
@@ -88,7 +87,7 @@ class FeedbackReviewViewModel
             if (state.value.hasLoaded) return
             val data =
                 session.snapshot() ?: run {
-                    sendEffect(FeedbackReviewEffect.ExitRequested)
+                    context.sendEffect(FeedbackReviewEffect.ExitRequested)
                     return
                 }
             val axes =
@@ -107,14 +106,9 @@ class FeedbackReviewViewModel
                         comment = draft.comment,
                     )
                 }
-            reduce {
-                copy(
-                    requesterName = data.requesterName,
-                    nickname = data.nickname,
-                    axes = axes,
-                    hasLoaded = true,
-                )
-            }
+            context.dispatch(
+                FeedbackReviewMutation.SessionLoaded(data.requesterName, data.nickname, axes),
+            )
         }
 
         private fun openCommentEditor(axis: GuestFeedbackAxisCode) {
@@ -125,7 +119,7 @@ class FeedbackReviewViewModel
                     getCode = { it.code },
                     getComment = { it.comment },
                 ) ?: return
-            reduce { withEditorState(editorState) }
+            context.dispatch(FeedbackReviewMutation.EditorOpened(editorState))
         }
 
         private fun confirmComment() {
@@ -137,31 +131,34 @@ class FeedbackReviewViewModel
                     getCode = { it.code },
                     updateComment = { item, comment -> item.copy(comment = comment) },
                 ) ?: return
-            reduce { copy(axes = newAxes).withEditorState(editorState) }
+            context.dispatch(FeedbackReviewMutation.CommentConfirmed(newAxes, editorState))
         }
 
         private fun dismissComment() {
             val editorState = commentEditor.dismiss()
-            reduce { withEditorState(editorState) }
+            context.dispatch(FeedbackReviewMutation.EditorDismissed(editorState))
         }
 
         private fun showSubmitConfirmation() {
             if (state.value.isSubmitting || isConfirmationPending) return
             isConfirmationPending = true
-            viewModelScope.launch {
-                val result =
-                    showGlobalModal(
-                        GlobalModalRequest(
-                            title = "피드백 제출",
-                            message = "제출하면 다시 고칠 수 없어요.",
-                            confirmText = "제출",
-                            cancelText = "취소",
-                            dismissible = true,
-                        ),
-                    )
-                isConfirmationPending = false
-                if (result == GlobalModalResult.Confirm) {
-                    onIntent(FeedbackReviewIntent.SubmitConfirmed)
+            context.launch {
+                try {
+                    val result =
+                        showGlobalModal(
+                            GlobalModalRequest(
+                                title = "피드백 제출",
+                                message = "제출하면 다시 고칠 수 없어요.",
+                                confirmText = "제출",
+                                cancelText = "취소",
+                                dismissible = true,
+                            ),
+                        )
+                    if (result == GlobalModalResult.Confirm) {
+                        submit()
+                    }
+                } finally {
+                    isConfirmationPending = false
                 }
             }
         }
@@ -170,7 +167,7 @@ class FeedbackReviewViewModel
             if (state.value.isSubmitting) return
             val data =
                 session.snapshot() ?: run {
-                    sendEffect(FeedbackReviewEffect.ExitRequested)
+                    context.sendEffect(FeedbackReviewEffect.ExitRequested)
                     return
                 }
             val ratings =
@@ -181,29 +178,29 @@ class FeedbackReviewViewModel
                 }
 
             if (ratings.size != data.axes.size) {
-                sendEffect(FeedbackReviewEffect.ReplayRequested)
+                context.sendEffect(FeedbackReviewEffect.ReplayRequested)
             } else {
-                reduce {
-                    copy(isSubmitting = true).withEditorState(CommentEditorState.Hidden)
-                }
-                viewModelScope.launch {
+                context.dispatch(FeedbackReviewMutation.SubmissionStarted)
+                context.launch {
                     submitGuestFeedbackUseCase(
                         token = data.token,
                         axes = data.axes,
                         submission = GuestFeedbackSubmission(data.nickname, ratings),
-                    ).onSuccess {
-                        session.clear()
-                        reduce { copy(isSubmitting = false) }
-                        sendEffect(FeedbackReviewEffect.ShowToast("피드백을 제출했어요."))
-                        sendEffect(FeedbackReviewEffect.SubmissionCompleted)
-                    }.onFailure(::handleFailure)
+                    ).also { currentCoroutineContext().ensureActive() }
+                        .onSuccess {
+                            session.clear()
+                            context.dispatch(FeedbackReviewMutation.SubmissionFinished)
+                            context.sendEffect(FeedbackReviewEffect.ShowToast("피드백을 제출했어요."))
+                            context.sendEffect(FeedbackReviewEffect.SubmissionCompleted)
+                        }.onFailure(::handleFailure)
                 }
             }
         }
 
         private fun handleFailure(error: Throwable) {
-            reduce { copy(isSubmitting = false) }
-            viewModelScope.launch {
+            if (error is CancellationException) throw error
+            context.dispatch(FeedbackReviewMutation.SubmissionFinished)
+            context.launch {
                 when (error) {
                     is GuestFeedbackValidationException -> {
                         showGlobalModal(
@@ -286,7 +283,86 @@ class FeedbackReviewViewModel
                 )
             if (result == GlobalModalResult.Confirm) {
                 session.clear()
-                sendEffect(FeedbackReviewEffect.ExitRequested)
+                context.sendEffect(FeedbackReviewEffect.ExitRequested)
             }
         }
     }
+
+private sealed interface FeedbackReviewMutation {
+    data class CommentChanged(
+        val value: String,
+    ) : FeedbackReviewMutation
+
+    data class SessionLoaded(
+        val name: String,
+        val nickname: String,
+        val axes: List<FeedbackReviewAxisUiModel>,
+    ) : FeedbackReviewMutation
+
+    data class EditorOpened(
+        val editorState: CommentEditorState,
+    ) : FeedbackReviewMutation
+
+    data class CommentConfirmed(
+        val axes: List<FeedbackReviewAxisUiModel>,
+        val editorState: CommentEditorState,
+    ) : FeedbackReviewMutation
+
+    data class EditorDismissed(
+        val editorState: CommentEditorState,
+    ) : FeedbackReviewMutation
+
+    data object SubmissionStarted : FeedbackReviewMutation
+
+    data object SubmissionFinished : FeedbackReviewMutation
+}
+
+/** 화면 상태 계산은 순수하며 세션 기록과 Modal 호출은 ViewModel에서 수행한다. */
+private object FeedbackReviewReducer : MviReducer<FeedbackReviewState, FeedbackReviewMutation> {
+    override fun reduce(
+        state: FeedbackReviewState,
+        mutation: FeedbackReviewMutation,
+    ): FeedbackReviewState =
+        with(state) {
+            when (mutation) {
+                is FeedbackReviewMutation.CommentChanged -> {
+                    copy(
+                        editingValue = mutation.value.take(MAX_COMMENT_LENGTH),
+                    )
+                }
+
+                is FeedbackReviewMutation.SessionLoaded -> {
+                    copy(
+                        requesterName = mutation.name,
+                        nickname = mutation.nickname,
+                        axes = mutation.axes,
+                        hasLoaded = true,
+                    )
+                }
+
+                is FeedbackReviewMutation.EditorOpened -> {
+                    withEditorState(mutation.editorState)
+                }
+
+                is FeedbackReviewMutation.CommentConfirmed -> {
+                    copy(
+                        axes = mutation.axes,
+                    ).withEditorState(mutation.editorState)
+                }
+
+                is FeedbackReviewMutation.EditorDismissed -> {
+                    withEditorState(mutation.editorState)
+                }
+
+                FeedbackReviewMutation.SubmissionStarted -> {
+                    copy(
+                        isSubmitting = true,
+                    ).withEditorState(CommentEditorState.Hidden)
+                }
+
+                FeedbackReviewMutation.SubmissionFinished -> {
+                    copy(isSubmitting = false)
+                }
+            }
+        }
+}

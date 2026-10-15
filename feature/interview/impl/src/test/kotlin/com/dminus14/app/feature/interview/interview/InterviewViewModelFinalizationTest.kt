@@ -43,7 +43,7 @@ class InterviewViewModelFinalizationTest {
             backgroundScope.launch { viewModel.effect.toList(effects) }
 
             enterFinalization(viewModel, fixture, reportGenerating = false)
-            viewModel.onIntent(InterviewIntent.ReportRecordingSegmentFinalized(segment))
+            viewModel.onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(segment))
             runCurrent()
             advanceTimeBy(InterviewConstants.FINALIZATION_WATCHDOG_MILLIS)
             runCurrent()
@@ -73,7 +73,7 @@ class InterviewViewModelFinalizationTest {
             val stopCount = effects.count { it == InterviewEffect.StopRecordingSegment }
             val startCount = effects.filterIsInstance<InterviewEffect.StartRecordingSegment>().size
 
-            viewModel.onIntent(InterviewIntent.ClickRetryFinalization)
+            viewModel.onIntent(InterviewIntent.Finalization.ClickRetryFinalization)
             runCurrent()
 
             assertNull(viewModel.state.value.finalizationFailure)
@@ -83,7 +83,7 @@ class InterviewViewModelFinalizationTest {
                 effects.filterIsInstance<InterviewEffect.StartRecordingSegment>().size,
             )
 
-            viewModel.onIntent(InterviewIntent.ReportRecordingSegmentFinalized(segment))
+            viewModel.onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(segment))
             runCurrent()
 
             assertEquals(
@@ -115,8 +115,8 @@ class InterviewViewModelFinalizationTest {
             runCurrent()
             val stopCount = effects.count { it == InterviewEffect.StopRecordingSegment }
 
-            viewModel.onIntent(InterviewIntent.ClickRetryFinalization)
-            viewModel.onIntent(InterviewIntent.ReportRecordingFailure)
+            viewModel.onIntent(InterviewIntent.Finalization.ClickRetryFinalization)
+            viewModel.onIntent(InterviewIntent.Finalization.ReportRecordingFailure)
             runCurrent()
 
             assertNull(viewModel.state.value.finalizationFailure)
@@ -137,8 +137,8 @@ class InterviewViewModelFinalizationTest {
             backgroundScope.launch { viewModel.effect.toList(effects) }
 
             enterFinalization(viewModel, fixture, reportGenerating = false)
-            viewModel.onIntent(InterviewIntent.ReportRecordingFailure)
-            viewModel.onIntent(InterviewIntent.ClickRetryFinalization)
+            viewModel.onIntent(InterviewIntent.Finalization.ReportRecordingFailure)
+            viewModel.onIntent(InterviewIntent.Finalization.ClickRetryFinalization)
             runCurrent()
 
             assertEquals(
@@ -161,7 +161,7 @@ class InterviewViewModelFinalizationTest {
 
             enterFinalization(viewModel, fixture, reportGenerating = false)
             fixture.saveManifestFailure = IllegalStateException("synthetic save failure")
-            viewModel.onIntent(InterviewIntent.ReportWrapUpPlaybackCompleted)
+            viewModel.onIntent(InterviewIntent.Finalization.ReportWrapUpPlaybackCompleted)
             runCurrent()
 
             assertEquals(1, fixture.fatalPromptCount)
@@ -169,7 +169,7 @@ class InterviewViewModelFinalizationTest {
             assertEquals(1, effects.count { it == InterviewEffect.FatalExitConfirmed })
 
             fixture.saveManifestFailure = null
-            viewModel.onIntent(InterviewIntent.ReportRecordingSegmentFinalized(segment))
+            viewModel.onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(segment))
             runCurrent()
 
             assertEquals(0, effects.filterIsInstance<InterviewEffect.InterviewEnded>().size)
@@ -189,10 +189,12 @@ class InterviewViewModelFinalizationTest {
                 reportGenerating = true,
                 wrapUpPayload = null,
             )
-            viewModel.onIntent(InterviewIntent.ReportUploadNotificationPermission(true))
-            viewModel.onIntent(InterviewIntent.ReportUploadNetworkMetered(false))
-            viewModel.onIntent(InterviewIntent.ReportVideoUploadEnqueueFailure)
-            viewModel.onIntent(InterviewIntent.ClickRetryFinalization)
+            viewModel.onIntent(
+                InterviewIntent.Finalization.ReportUploadNotificationPermission(true),
+            )
+            viewModel.onIntent(InterviewIntent.Finalization.ReportUploadNetworkMetered(false))
+            viewModel.onIntent(InterviewIntent.Finalization.ReportVideoUploadEnqueueFailure)
+            viewModel.onIntent(InterviewIntent.Finalization.ClickRetryFinalization)
             runCurrent()
 
             val enqueueEffects = effects.filterIsInstance<InterviewEffect.EnqueueVideoUpload>()
@@ -216,8 +218,8 @@ class InterviewViewModelFinalizationTest {
             enterFinalization(viewModel, fixture, reportGenerating = false)
             advanceTimeBy(InterviewConstants.FINALIZATION_WATCHDOG_MILLIS)
             runCurrent()
-            viewModel.onIntent(InterviewIntent.ClickExitFinalization)
-            viewModel.onIntent(InterviewIntent.ReportRecordingSegmentFinalized(segment))
+            viewModel.onIntent(InterviewIntent.Finalization.ClickExitFinalization)
+            viewModel.onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(segment))
             runCurrent()
 
             val completionEffects =
@@ -245,12 +247,12 @@ class InterviewViewModelFinalizationTest {
                         turn = QuestionTurn(turnLevel = 1, depthLevel = 0),
                     ),
             )
-        viewModel.onIntent(InterviewIntent.LoadInterview)
+        viewModel.onIntent(InterviewIntent.Preparation.LoadInterview)
         runCurrent()
-        viewModel.onIntent(InterviewIntent.ReportCameraPermissionGranted)
-        viewModel.onIntent(InterviewIntent.ReportCameraReady)
-        viewModel.onIntent(InterviewIntent.ReportMicrophoneReady)
-        viewModel.onIntent(InterviewIntent.ReportStorageAvailability(Long.MAX_VALUE))
+        viewModel.onIntent(InterviewIntent.Preparation.ReportCameraPermissionGranted)
+        viewModel.onIntent(InterviewIntent.Preparation.ReportCameraReady)
+        viewModel.onIntent(InterviewIntent.Preparation.ReportMicrophoneReady)
+        viewModel.onIntent(InterviewIntent.Preparation.ReportStorageAvailability(Long.MAX_VALUE))
         fixture.recoveryStore.publish(
             InterviewRecoveryStore.Result(
                 nextQuestion = null,
@@ -260,7 +262,7 @@ class InterviewViewModelFinalizationTest {
                 reportGenerating = reportGenerating,
             ),
         )
-        viewModel.onIntent(InterviewIntent.ConsumeRecoveryResult)
+        viewModel.onIntent(InterviewIntent.Recovery.ConsumeRecoveryResult)
         runCurrent()
     }
 

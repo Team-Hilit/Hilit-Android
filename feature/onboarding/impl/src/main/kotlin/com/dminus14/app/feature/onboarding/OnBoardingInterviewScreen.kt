@@ -44,6 +44,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.Flow as FlowIntent
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.Portfolio as PortfolioIntent
 
 private val ContentHorizontalPadding = 20.dp
 private val ProgressBarHorizontalPadding = 20.dp
@@ -68,7 +70,7 @@ fun OnBoardingInterviewScreen(
                 val picked = withContext(Dispatchers.IO) { copyPdfToCache(context, uri) }
                 if (picked != null) {
                     viewModel.onIntent(
-                        OnBoardingInterviewIntent.PortfolioFileSelected(
+                        PortfolioIntent.PortfolioFileSelected(
                             file = picked.file,
                             fileName = picked.name,
                         ),
@@ -78,7 +80,7 @@ fun OnBoardingInterviewScreen(
         }
 
     LaunchedEffect(Unit) {
-        viewModel.onIntent(OnBoardingInterviewIntent.Load)
+        viewModel.onIntent(FlowIntent.Load)
     }
 
     LaunchedEffect(Unit) {
@@ -107,7 +109,7 @@ fun OnBoardingInterviewScreen(
 
     LaunchedEffect(state.step) {
         if (state.step == OnBoardingInterviewStep.Portfolio) {
-            viewModel.onIntent(OnBoardingInterviewIntent.PortfolioStepEntered)
+            viewModel.onIntent(PortfolioIntent.PortfolioStepEntered)
         }
     }
 
@@ -169,7 +171,7 @@ internal fun OnBoardingInterviewContent(
     // Preload 스텝에서는 VM의 onPreviousClick 이 no-op로 처리해(세션 이중 생성 방지),
     // 화면은 그대로 유지된다.
     BackHandler {
-        onIntent(OnBoardingInterviewIntent.ClickPrevious)
+        onIntent(FlowIntent.ClickPrevious)
     }
 
     if (state.step == OnBoardingInterviewStep.Preload) {
@@ -199,8 +201,8 @@ internal fun OnBoardingInterviewContent(
     ) {
         OnBoardingInterviewHeader(
             step = state.step,
-            onCloseClick = { onIntent(OnBoardingInterviewIntent.ClickClose) },
-            onSkipClick = { onIntent(OnBoardingInterviewIntent.ClickSkip) },
+            onCloseClick = { onIntent(FlowIntent.ClickClose) },
+            onSkipClick = { onIntent(FlowIntent.ClickSkip) },
         )
 
         OnBoardingInterviewAnimatedStepContent(
@@ -214,8 +216,8 @@ internal fun OnBoardingInterviewContent(
             rightText = "계속하기",
             leftEnabled = state.isBottomBarEnabled(),
             rightEnabled = state.isBottomBarEnabled() && state.isContinueEnabled(),
-            onLeftClick = { onIntent(OnBoardingInterviewIntent.ClickPrevious) },
-            onRightClick = { onIntent(OnBoardingInterviewIntent.ClickContinue) },
+            onLeftClick = { onIntent(FlowIntent.ClickPrevious) },
+            onRightClick = { onIntent(FlowIntent.ClickContinue) },
         )
     }
 

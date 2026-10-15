@@ -109,8 +109,7 @@ fun InterviewReportPlayerScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(sessionId) {
-        viewModel.bindSessionId(sessionId)
-        viewModel.onIntent(InterviewReportPlayerIntent.Load)
+        viewModel.onIntent(InterviewReportPlayerIntent.Load(sessionId))
     }
     LaunchedEffect(Unit) {
         viewModel.effect.collect { effect ->

@@ -1,12 +1,12 @@
 package com.dminus14.app.feature.feedback.onboarding
 
 import android.os.SystemClock
-import androidx.lifecycle.viewModelScope
 import com.dminus14.app.core.common.event.GlobalAppEvent
 import com.dminus14.app.core.common.event.GlobalErrorHandler
 import com.dminus14.app.core.common.modal.GlobalModalRequest
 import com.dminus14.app.core.common.modal.GlobalModalResult
 import com.dminus14.app.core.common.modal.showGlobalModal
+import com.dminus14.app.core.common.mvi.MviReducer
 import com.dminus14.app.core.common.mvi.MviViewModel
 import com.dminus14.app.domain.exception.GuestFeedbackRequestException
 import com.dminus14.app.domain.exception.NetworkUnavailableException
@@ -16,7 +16,9 @@ import com.dminus14.app.domain.model.GuestFeedbackUnavailableReason
 import com.dminus14.app.domain.usecase.EnterGuestFeedbackUseCase
 import com.dminus14.app.feature.feedback.session.GuestFeedbackFlowSession
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 
 @HiltViewModel
@@ -28,6 +30,7 @@ class FeedbackOnboardingViewModel
     ) : MviViewModel<FeedbackOnboardingIntent, FeedbackOnboardingState, FeedbackOnboardingEffect>(
             FeedbackOnboardingState(),
         ) {
+        private val context = createContext(FeedbackOnboardingReducer)
         private var firstBackPressedAt: Long? = null
 
         override fun onIntent(intent: FeedbackOnboardingIntent) {
@@ -38,12 +41,12 @@ class FeedbackOnboardingViewModel
 
                 FeedbackOnboardingIntent.StartClicked -> {
                     if (state.value.loadState == FeedbackOnboardingLoadState.Ready) {
-                        reduce { copy(isNameEditorVisible = true) }
+                        context.dispatch(FeedbackOnboardingMutation.EditorOpened)
                     }
                 }
 
                 is FeedbackOnboardingIntent.NicknameChanged -> {
-                    reduce { copy(nickname = intent.value) }
+                    context.dispatch(FeedbackOnboardingMutation.NicknameChanged(intent.value))
                 }
 
                 FeedbackOnboardingIntent.NicknameConfirmed -> {
@@ -51,7 +54,7 @@ class FeedbackOnboardingViewModel
                 }
 
                 FeedbackOnboardingIntent.NameEditorDismissed -> {
-                    reduce { copy(isNameEditorVisible = false) }
+                    context.dispatch(FeedbackOnboardingMutation.EditorDismissed)
                 }
 
                 FeedbackOnboardingIntent.BackPressed -> {
@@ -63,9 +66,10 @@ class FeedbackOnboardingViewModel
         private fun load(token: String) {
             if (state.value.loadState != FeedbackOnboardingLoadState.Idle) return
 
-            reduce { copy(loadState = FeedbackOnboardingLoadState.Loading) }
-            viewModelScope.launch {
+            context.dispatch(FeedbackOnboardingMutation.LoadStarted)
+            context.launch {
                 enterGuestFeedbackUseCase(token)
+                    .also { currentCoroutineContext().ensureActive() }
                     .onSuccess { entry ->
                         when (entry) {
                             is GuestFeedbackEntry.Open -> handleOpen(token, entry)
@@ -88,12 +92,7 @@ class FeedbackOnboardingViewModel
             }
 
             session.start(token, entry)
-            reduce {
-                copy(
-                    requesterName = entry.requesterName,
-                    loadState = FeedbackOnboardingLoadState.Ready,
-                )
-            }
+            context.dispatch(FeedbackOnboardingMutation.EntryOpened(entry.requesterName))
         }
 
         private suspend fun showUnavailable(reason: GuestFeedbackUnavailableReason) {
@@ -128,29 +127,25 @@ class FeedbackOnboardingViewModel
             }
 
             session.setNickname(nickname)
-            reduce { copy(nickname = nickname, isNameEditorVisible = false) }
-            sendEffect(FeedbackOnboardingEffect.FeedbackReady)
+            context.dispatch(FeedbackOnboardingMutation.NicknameConfirmed(nickname))
+            context.sendEffect(FeedbackOnboardingEffect.FeedbackReady)
         }
 
         private fun handleBack() {
             val now = SystemClock.elapsedRealtime()
             if (shouldExitOnBack(firstBackPressedAt, now)) {
                 session.clear()
-                sendEffect(FeedbackOnboardingEffect.ExitRequested)
+                context.sendEffect(FeedbackOnboardingEffect.ExitRequested)
             } else {
                 firstBackPressedAt = now
-                sendEffect(FeedbackOnboardingEffect.ShowExitHint)
+                context.sendEffect(FeedbackOnboardingEffect.ShowExitHint)
             }
         }
 
         private fun handleFailure(error: Throwable) {
-            reduce {
-                copy(
-                    loadState = FeedbackOnboardingLoadState.Failed,
-                    isNameEditorVisible = false,
-                )
-            }
-            viewModelScope.launch {
+            if (error is CancellationException) throw error
+            context.dispatch(FeedbackOnboardingMutation.LoadFailed)
+            context.launch {
                 when (error) {
                     is GuestFeedbackRequestException -> {
                         showBlockingModal(
@@ -196,12 +191,7 @@ class FeedbackOnboardingViewModel
             title: String,
             message: String,
         ) {
-            reduce {
-                copy(
-                    loadState = FeedbackOnboardingLoadState.Failed,
-                    isNameEditorVisible = false,
-                )
-            }
+            context.dispatch(FeedbackOnboardingMutation.LoadFailed)
             session.clear()
             val result =
                 showGlobalModal(
@@ -213,7 +203,7 @@ class FeedbackOnboardingViewModel
                     ),
                 )
             if (result == GlobalModalResult.Confirm) {
-                sendEffect(FeedbackOnboardingEffect.ExitRequested)
+                context.sendEffect(FeedbackOnboardingEffect.ExitRequested)
             }
         }
     }
@@ -224,3 +214,74 @@ internal fun shouldExitOnBack(
 ): Boolean = firstBackPressedAt?.let { now - it <= EXIT_INTERVAL_MILLIS } == true
 
 private const val EXIT_INTERVAL_MILLIS = 2_000L
+
+private sealed interface FeedbackOnboardingMutation {
+    data object EditorOpened : FeedbackOnboardingMutation
+
+    data class NicknameChanged(
+        val value: String,
+    ) : FeedbackOnboardingMutation
+
+    data object EditorDismissed : FeedbackOnboardingMutation
+
+    data object LoadStarted : FeedbackOnboardingMutation
+
+    data class EntryOpened(
+        val requesterName: String,
+    ) : FeedbackOnboardingMutation
+
+    data class NicknameConfirmed(
+        val nickname: String,
+    ) : FeedbackOnboardingMutation
+
+    data object LoadFailed : FeedbackOnboardingMutation
+}
+
+/** 화면 상태 계산은 순수하며 세션 기록과 Modal 호출은 ViewModel에서 수행한다. */
+private object FeedbackOnboardingReducer :
+    MviReducer<FeedbackOnboardingState, FeedbackOnboardingMutation> {
+    override fun reduce(
+        state: FeedbackOnboardingState,
+        mutation: FeedbackOnboardingMutation,
+    ): FeedbackOnboardingState =
+        with(state) {
+            when (mutation) {
+                FeedbackOnboardingMutation.EditorOpened -> {
+                    copy(isNameEditorVisible = true)
+                }
+
+                is FeedbackOnboardingMutation.NicknameChanged -> {
+                    copy(nickname = mutation.value)
+                }
+
+                FeedbackOnboardingMutation.EditorDismissed -> {
+                    copy(isNameEditorVisible = false)
+                }
+
+                FeedbackOnboardingMutation.LoadStarted -> {
+                    copy(loadState = FeedbackOnboardingLoadState.Loading)
+                }
+
+                is FeedbackOnboardingMutation.EntryOpened -> {
+                    copy(
+                        requesterName = mutation.requesterName,
+                        loadState = FeedbackOnboardingLoadState.Ready,
+                    )
+                }
+
+                is FeedbackOnboardingMutation.NicknameConfirmed -> {
+                    copy(
+                        nickname = mutation.nickname,
+                        isNameEditorVisible = false,
+                    )
+                }
+
+                FeedbackOnboardingMutation.LoadFailed -> {
+                    copy(
+                        loadState = FeedbackOnboardingLoadState.Failed,
+                        isNameEditorVisible = false,
+                    )
+                }
+            }
+        }
+}

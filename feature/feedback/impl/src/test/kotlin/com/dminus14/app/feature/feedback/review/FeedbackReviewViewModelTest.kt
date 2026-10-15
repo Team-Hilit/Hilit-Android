@@ -1,5 +1,6 @@
 package com.dminus14.app.feature.feedback.review
 
+import androidx.lifecycle.ViewModelStore
 import com.dminus14.app.domain.model.GuestFeedbackAxisCode
 import com.dminus14.app.domain.usecase.SubmitGuestFeedbackUseCase
 import com.dminus14.app.feature.feedback.FakeGuestFeedbackRepository
@@ -148,6 +149,30 @@ class FeedbackReviewViewModelTest {
 
             assertFalse(viewModel.state.value.isSubmitting)
             assertEquals(1, repository.submitCount)
+            collectJob.cancel()
+        }
+
+    @Test
+    fun `종료된 화면의 제출 취소는 세션을 지우거나 완료 효과를 발행하지 않는다`() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val repository = FakeGuestFeedbackRepository(submitGate = gate)
+            val session = session()
+            val viewModel = FeedbackReviewViewModel(SubmitGuestFeedbackUseCase(repository), session)
+            val store = ViewModelStore().apply { put("review", viewModel) }
+            val effects = mutableListOf<FeedbackReviewEffect>()
+            val collectJob = backgroundScope.launch { viewModel.effect.toList(effects) }
+            viewModel.onIntent(FeedbackReviewIntent.LoadSession)
+            viewModel.onIntent(FeedbackReviewIntent.SubmitConfirmed)
+            runCurrent()
+
+            store.clear()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(1, repository.submitCount)
+            assertTrue(session.snapshot() != null)
+            assertTrue(effects.isEmpty())
             collectJob.cancel()
         }
 

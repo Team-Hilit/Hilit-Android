@@ -75,6 +75,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.Flow as FlowIntent
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.JobDescription as JdIntent
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.Portfolio as PortfolioIntent
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.SessionPreparation as SessionIntent
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @Suppress("LargeClass")
@@ -94,7 +98,7 @@ class OnBoardingInterviewViewModelTest {
                         ),
                 )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.Load)
+            viewModel.onIntent(FlowIntent.Load)
             advanceUntilIdle()
 
             assertEquals("프로필 실패", viewModel.state.value.errorMessage)
@@ -111,7 +115,7 @@ class OnBoardingInterviewViewModelTest {
                         ),
                 )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.Load)
+            viewModel.onIntent(FlowIntent.Load)
             advanceUntilIdle()
 
             assertEquals("오버뷰 실패", viewModel.state.value.errorMessage)
@@ -126,7 +130,7 @@ class OnBoardingInterviewViewModelTest {
                         FakePortfolioRepository(overviewResult = Result.success(readyOverview())),
                 )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.Load)
+            viewModel.onIntent(FlowIntent.Load)
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -153,7 +157,7 @@ class OnBoardingInterviewViewModelTest {
                         ),
                 )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.Load)
+            viewModel.onIntent(FlowIntent.Load)
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -172,9 +176,9 @@ class OnBoardingInterviewViewModelTest {
                         ),
                 )
             // load 이전에 Portfolio 스텝으로 이동시켜, load 완료 시 재시도 분기를 태운다.
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip)
+            viewModel.onIntent(FlowIntent.ClickSkip)
 
-            viewModel.onIntent(OnBoardingInterviewIntent.Load)
+            viewModel.onIntent(FlowIntent.Load)
             advanceUntilIdle()
 
             assertEquals(
@@ -190,7 +194,9 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val viewModel = createViewModel()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionLinkChange(""))
+            viewModel.onIntent(
+                JdIntent.JobDescriptionLinkChange(""),
+            )
 
             val state = viewModel.state.value
             assertEquals(JdLinkStatus.Idle, state.jdLinkStatus)
@@ -202,7 +208,9 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val viewModel = createViewModel()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionLinkChange("http://jd.com"))
+            viewModel.onIntent(
+                JdIntent.JobDescriptionLinkChange("http://jd.com"),
+            )
 
             val state = viewModel.state.value
             assertEquals(JdLinkStatus.Invalid, state.jdLinkStatus)
@@ -215,7 +223,9 @@ class OnBoardingInterviewViewModelTest {
             val viewModel = createViewModel()
 
             // "https://"까지만 입력한 상태는 스킴 입력 중으로 보고 포맷 오류로 취급하지 않는다.
-            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionLinkChange("https://"))
+            viewModel.onIntent(
+                JdIntent.JobDescriptionLinkChange("https://"),
+            )
 
             val state = viewModel.state.value
             assertEquals(JdLinkStatus.Idle, state.jdLinkStatus)
@@ -229,7 +239,7 @@ class OnBoardingInterviewViewModelTest {
             val viewModel = createViewModel(interviewRepository = interviewRepo)
 
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
 
             advanceUntilIdle()
@@ -255,9 +265,9 @@ class OnBoardingInterviewViewModelTest {
                 )
 
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -280,9 +290,9 @@ class OnBoardingInterviewViewModelTest {
                 )
 
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -309,9 +319,9 @@ class OnBoardingInterviewViewModelTest {
                 )
 
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -336,10 +346,10 @@ class OnBoardingInterviewViewModelTest {
                         ),
                 )
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
             advanceUntilIdle()
 
             assertEquals(JdLinkStatus.Invalid, viewModel.state.value.jdLinkStatus)
@@ -361,9 +371,9 @@ class OnBoardingInterviewViewModelTest {
                 async(start = CoroutineStart.UNDISPATCHED) { GlobalErrorHandler.events.first() }
 
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
             advanceUntilIdle()
 
             assertEquals(GlobalAppEvent.ShowUnknownError, globalEvent.await().event)
@@ -385,10 +395,10 @@ class OnBoardingInterviewViewModelTest {
             val globalEvent =
                 async(start = CoroutineStart.UNDISPATCHED) { GlobalErrorHandler.events.first() }
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
             advanceUntilIdle()
 
             assertEquals(GlobalAppEvent.ShowNetworkErrorAndExit, globalEvent.await().event)
@@ -408,10 +418,10 @@ class OnBoardingInterviewViewModelTest {
             val globalEvent =
                 async(start = CoroutineStart.UNDISPATCHED) { GlobalErrorHandler.events.first() }
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
             advanceUntilIdle()
 
             assertEquals(GlobalAppEvent.ShowServerErrorAndExit, globalEvent.await().event)
@@ -426,15 +436,15 @@ class OnBoardingInterviewViewModelTest {
             val viewModel = createViewModel(interviewRepository = interviewRepo)
 
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/a"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/a"),
             )
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/ab"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/ab"),
             )
             advanceUntilIdle()
 
             assertTrue(interviewRepo.validatedUrls.isEmpty())
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
             advanceUntilIdle()
 
             assertEquals(listOf("https://jd.com/ab"), interviewRepo.validatedUrls)
@@ -450,13 +460,13 @@ class OnBoardingInterviewViewModelTest {
                 )
             val viewModel = createViewModel(interviewRepository = interviewRepo)
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
             assertEquals(JdLinkStatus.Validating, viewModel.state.value.jdLinkStatus)
             assertFalse(viewModel.state.value.isContinueEnabled())
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
             advanceUntilIdle()
 
             assertEquals(listOf("https://jd.com/1"), interviewRepo.validatedUrls)
@@ -474,11 +484,11 @@ class OnBoardingInterviewViewModelTest {
                 )
             val viewModel = createViewModel(interviewRepository = interviewRepo)
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip)
+            viewModel.onIntent(FlowIntent.ClickSkip)
             advanceUntilIdle()
 
             assertEquals(OnBoardingInterviewStep.Portfolio, viewModel.state.value.step)
@@ -491,10 +501,12 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val interviewRepo = FakeInterviewRepository()
             val viewModel = createViewModel(interviewRepository = interviewRepo)
-            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionLinkChange("http://jd.com"))
+            viewModel.onIntent(
+                JdIntent.JobDescriptionLinkChange("http://jd.com"),
+            )
 
             assertTrue(viewModel.state.value.isContinueEnabled())
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
 
             assertTrue(interviewRepo.validatedUrls.isEmpty())
             assertEquals(JdLinkStatus.Invalid, viewModel.state.value.jdLinkStatus)
@@ -508,7 +520,9 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val viewModel = createViewModel()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionTextChange("가".repeat(3500)))
+            viewModel.onIntent(
+                JdIntent.JobDescriptionTextChange("가".repeat(3500)),
+            )
 
             val state = viewModel.state.value
             assertEquals(3000, state.jobDescriptionText.length)
@@ -519,10 +533,14 @@ class OnBoardingInterviewViewModelTest {
     fun `Text 탭에서 200자 미만이면 too-short 에러가 세팅되고 전진하지 않는다`() =
         runViewModelTest {
             val viewModel = createViewModel()
-            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionTabChange(1))
-            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionTextChange("가".repeat(199)))
+            viewModel.onIntent(
+                JdIntent.JobDescriptionTabChange(1),
+            )
+            viewModel.onIntent(
+                JdIntent.JobDescriptionTextChange("가".repeat(199)),
+            )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
 
             val state = viewModel.state.value
             assertEquals(MESSAGE_TEXT_TOO_SHORT, state.jdTextError)
@@ -533,10 +551,14 @@ class OnBoardingInterviewViewModelTest {
     fun `Text 탭에서 200자 이상이면 다음 스텝으로 전진한다`() =
         runViewModelTest {
             val viewModel = createViewModel()
-            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionTabChange(1))
-            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionTextChange("가".repeat(200)))
+            viewModel.onIntent(
+                JdIntent.JobDescriptionTabChange(1),
+            )
+            viewModel.onIntent(
+                JdIntent.JobDescriptionTextChange("가".repeat(200)),
+            )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
 
             assertEquals(OnBoardingInterviewStep.Portfolio, viewModel.state.value.step)
         }
@@ -548,7 +570,9 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val viewModel = createViewModel()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionTabChange(1))
+            viewModel.onIntent(
+                JdIntent.JobDescriptionTabChange(1),
+            )
 
             assertEquals(JobDescriptionTab.Text, viewModel.state.value.jobDescriptionTab)
         }
@@ -558,7 +582,9 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val viewModel = createViewModel()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.JobDescriptionTabChange(9))
+            viewModel.onIntent(
+                JdIntent.JobDescriptionTabChange(9),
+            )
 
             assertEquals(JobDescriptionTab.Link, viewModel.state.value.jobDescriptionTab)
         }
@@ -570,7 +596,7 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val viewModel = createViewModel()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
 
             assertEquals(OnBoardingInterviewStep.Portfolio, viewModel.state.value.step)
         }
@@ -586,10 +612,10 @@ class OnBoardingInterviewViewModelTest {
                         ),
                 )
             viewModel.onIntent(
-                OnBoardingInterviewIntent.JobDescriptionLinkChange("https://jd.com/1"),
+                JdIntent.JobDescriptionLinkChange("https://jd.com/1"),
             )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
             advanceUntilIdle()
 
             assertEquals(OnBoardingInterviewStep.JobDescription, viewModel.state.value.step)
@@ -601,9 +627,9 @@ class OnBoardingInterviewViewModelTest {
     fun `Portfolio 스텝에서 준비된 포트폴리오가 없으면 필수 안내 에러가 노출된다`() =
         runViewModelTest {
             val viewModel = createViewModel()
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) // JobDescription -> Portfolio
+            viewModel.onIntent(FlowIntent.ClickSkip) // JobDescription -> Portfolio
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
 
             val state = viewModel.state.value
             assertEquals(MESSAGE_PORTFOLIO_REQUIRED, state.portfolioErrorMessage)
@@ -618,11 +644,11 @@ class OnBoardingInterviewViewModelTest {
                     portfolioRepository =
                         FakePortfolioRepository(overviewResult = Result.success(readyOverview())),
                 )
-            viewModel.onIntent(OnBoardingInterviewIntent.Load)
+            viewModel.onIntent(FlowIntent.Load)
             advanceUntilIdle()
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) // JobDescription -> Portfolio
+            viewModel.onIntent(FlowIntent.ClickSkip) // JobDescription -> Portfolio
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
 
             assertEquals(OnBoardingInterviewStep.MainProject, viewModel.state.value.step)
         }
@@ -634,7 +660,7 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val viewModel = viewModelWithExisting(replace = true, delete = true)
 
-            viewModel.onIntent(OnBoardingInterviewIntent.PortfolioStepEntered)
+            viewModel.onIntent(PortfolioIntent.PortfolioStepEntered)
 
             assertEquals(
                 ExistingPortfolioModalPhase.ConfirmContinue,
@@ -647,7 +673,7 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val viewModel = viewModelWithExisting(replace = false, delete = true)
 
-            viewModel.onIntent(OnBoardingInterviewIntent.PortfolioStepEntered)
+            viewModel.onIntent(PortfolioIntent.PortfolioStepEntered)
 
             assertEquals(
                 ExistingPortfolioModalPhase.AutoDismissNotice,
@@ -663,11 +689,11 @@ class OnBoardingInterviewViewModelTest {
                     portfolioRepository =
                         FakePortfolioRepository(overviewResult = Result.success(emptyOverview())),
                 )
-            viewModel.onIntent(OnBoardingInterviewIntent.Load)
+            viewModel.onIntent(FlowIntent.Load)
             advanceUntilIdle()
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip)
+            viewModel.onIntent(FlowIntent.ClickSkip)
 
-            viewModel.onIntent(OnBoardingInterviewIntent.PortfolioStepEntered)
+            viewModel.onIntent(PortfolioIntent.PortfolioStepEntered)
 
             assertEquals(
                 ExistingPortfolioModalPhase.None,
@@ -679,10 +705,12 @@ class OnBoardingInterviewViewModelTest {
     fun `안내 모달은 세션당 1회만 노출된다`() =
         runViewModelTest {
             val viewModel = viewModelWithExisting(replace = true, delete = true)
-            viewModel.onIntent(OnBoardingInterviewIntent.PortfolioStepEntered)
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickExistingPortfolioConfirm)
+            viewModel.onIntent(PortfolioIntent.PortfolioStepEntered)
+            viewModel.onIntent(
+                PortfolioIntent.ClickExistingPortfolioConfirm,
+            )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.PortfolioStepEntered)
+            viewModel.onIntent(PortfolioIntent.PortfolioStepEntered)
 
             assertEquals(
                 ExistingPortfolioModalPhase.None,
@@ -694,9 +722,11 @@ class OnBoardingInterviewViewModelTest {
     fun `ClickExistingPortfolioConfirm이면 모달이 None으로 닫힌다`() =
         runViewModelTest {
             val viewModel = viewModelWithExisting(replace = true, delete = true)
-            viewModel.onIntent(OnBoardingInterviewIntent.PortfolioStepEntered)
+            viewModel.onIntent(PortfolioIntent.PortfolioStepEntered)
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickExistingPortfolioConfirm)
+            viewModel.onIntent(
+                PortfolioIntent.ClickExistingPortfolioConfirm,
+            )
 
             assertEquals(
                 ExistingPortfolioModalPhase.None,
@@ -708,9 +738,9 @@ class OnBoardingInterviewViewModelTest {
     fun `AutoDismissNotice 상태에서 dismiss하면 모달을 닫고 다음 스텝으로 전진한다`() =
         runViewModelTest {
             val viewModel = viewModelWithExisting(replace = false, delete = false)
-            viewModel.onIntent(OnBoardingInterviewIntent.PortfolioStepEntered)
+            viewModel.onIntent(PortfolioIntent.PortfolioStepEntered)
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickAutoDismissNotice)
+            viewModel.onIntent(PortfolioIntent.ClickAutoDismissNotice)
 
             val state = viewModel.state.value
             assertEquals(ExistingPortfolioModalPhase.None, state.existingPortfolioModalPhase)
@@ -721,9 +751,9 @@ class OnBoardingInterviewViewModelTest {
     fun `AutoDismissNotice가 아닌 상태에서는 dismiss가 무시된다`() =
         runViewModelTest {
             val viewModel = viewModelWithExisting(replace = true, delete = true)
-            viewModel.onIntent(OnBoardingInterviewIntent.PortfolioStepEntered) // ConfirmContinue
+            viewModel.onIntent(PortfolioIntent.PortfolioStepEntered) // ConfirmContinue
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickAutoDismissNotice)
+            viewModel.onIntent(PortfolioIntent.ClickAutoDismissNotice)
 
             assertEquals(OnBoardingInterviewStep.Portfolio, viewModel.state.value.step)
         }
@@ -735,7 +765,9 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val viewModel = createViewModel()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.MainProjectTextChange("가".repeat(400)))
+            viewModel.onIntent(
+                FlowIntent.MainProjectTextChange("가".repeat(400)),
+            )
 
             val state = viewModel.state.value
             assertEquals(300, state.mainProjectText.length)
@@ -748,7 +780,7 @@ class OnBoardingInterviewViewModelTest {
             val viewModel = createViewModel()
             moveToMainProject(viewModel)
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
 
             assertEquals(OnBoardingInterviewStep.Preload, viewModel.state.value.step)
         }
@@ -758,9 +790,9 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val viewModel = createViewModel()
             moveToMainProject(viewModel)
-            viewModel.onIntent(OnBoardingInterviewIntent.MainProjectTextChange("짧은설명"))
+            viewModel.onIntent(FlowIntent.MainProjectTextChange("짧은설명"))
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
 
             val state = viewModel.state.value
             assertEquals(MESSAGE_FREETEXT_TOO_SHORT, state.mainProjectError)
@@ -773,10 +805,10 @@ class OnBoardingInterviewViewModelTest {
             val viewModel = createViewModel()
             moveToMainProject(viewModel)
             viewModel.onIntent(
-                OnBoardingInterviewIntent.MainProjectTextChange("열자이상충분한설명입니다"),
+                FlowIntent.MainProjectTextChange("열자이상충분한설명입니다"),
             )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+            viewModel.onIntent(FlowIntent.ClickContinue)
 
             assertEquals(OnBoardingInterviewStep.Preload, viewModel.state.value.step)
         }
@@ -789,7 +821,7 @@ class OnBoardingInterviewViewModelTest {
             val interviewRepo = FakeInterviewRepository()
             val viewModel = createViewModel(interviewRepository = interviewRepo)
             // load 없이 Preload로 진입해 jobRole/portfolioId 가드를 태운다.
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -802,7 +834,7 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val interviewRepo = readySessionRepo()
             val viewModel = loadedForPreload(interviewRepo)
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle()
 
             assertNull(interviewRepo.lastRequest?.freeText)
@@ -821,7 +853,7 @@ class OnBoardingInterviewViewModelTest {
                         ),
                 )
             val viewModel = loadedForPreload(interviewRepo)
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             // 폴링 첫 delay 이전까지만 진행시켜 InProgress 전환을 확인한다.
 
             val state = viewModel.state.value
@@ -838,7 +870,7 @@ class OnBoardingInterviewViewModelTest {
             val effects = mutableListOf<OnBoardingInterviewEffect>()
             val job = launch { viewModel.effect.collect(effects::add) }
 
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -864,7 +896,7 @@ class OnBoardingInterviewViewModelTest {
                         ),
                 )
             val viewModel = loadedForPreload(interviewRepo)
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle()
 
             assertEquals("면접 준비에 실패했어요. 다시 시도해 주세요.", viewModel.state.value.errorMessage)
@@ -883,7 +915,7 @@ class OnBoardingInterviewViewModelTest {
                     repeatLastSessionStatus = true,
                 )
             val viewModel = loadedForPreload(interviewRepo)
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle()
 
             assertEquals(
@@ -904,7 +936,7 @@ class OnBoardingInterviewViewModelTest {
                         ),
                 )
             val viewModel = loadedForPreload(interviewRepo)
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle()
 
             assertEquals("세션 조회 실패", viewModel.state.value.errorMessage)
@@ -920,7 +952,7 @@ class OnBoardingInterviewViewModelTest {
                     createResult = Result.failure(IllegalStateException("세션 생성 실패")),
                 )
             val viewModel = loadedForPreload(interviewRepo)
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -945,7 +977,7 @@ class OnBoardingInterviewViewModelTest {
             val effects = mutableListOf<OnBoardingInterviewEffect>()
             val job = launch { viewModel.effect.collect(effects::add) }
 
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -962,7 +994,7 @@ class OnBoardingInterviewViewModelTest {
     fun `연관성 실패 1회는 MainProject로 되돌리고 인라인 에러만 노출한다`() =
         runViewModelTest {
             val viewModel = loadedForPreload(relevanceFailRepo())
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -976,10 +1008,10 @@ class OnBoardingInterviewViewModelTest {
     fun `연관성 실패가 4회에 도달하면 재선택 다이얼로그가 함께 뜬다`() =
         runViewModelTest {
             val viewModel = loadedForPreload(relevanceFailRepo())
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle() // 1회
             repeat(3) {
-                viewModel.onIntent(OnBoardingInterviewIntent.ClickContinue)
+                viewModel.onIntent(FlowIntent.ClickContinue)
                 advanceUntilIdle()
             } // 2, 3, 4회
 
@@ -992,10 +1024,12 @@ class OnBoardingInterviewViewModelTest {
     fun `ClickRelevanceRetryPortfolio면 다이얼로그를 닫고 Portfolio 스텝으로 되돌리며 카운트를 초기화한다`() =
         runViewModelTest {
             val viewModel = loadedForPreload(relevanceFailRepo())
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickRelevanceRetryPortfolio)
+            viewModel.onIntent(
+                SessionIntent.ClickRelevanceRetryPortfolio,
+            )
 
             val state = viewModel.state.value
             assertEquals(OnBoardingInterviewStep.Portfolio, state.step)
@@ -1010,10 +1044,12 @@ class OnBoardingInterviewViewModelTest {
             val interviewRepo = readySessionRepo()
             val viewModel = loadedForPreload(interviewRepo)
             viewModel.onIntent(
-                OnBoardingInterviewIntent.MainProjectTextChange("포트폴리오와 무관한 어떤 프로젝트 설명"),
+                FlowIntent.MainProjectTextChange("포트폴리오와 무관한 어떤 프로젝트 설명"),
             )
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickRelevanceProceedWithoutMainProject)
+            viewModel.onIntent(
+                SessionIntent.ClickRelevanceProceedWithoutMainProject,
+            )
             advanceUntilIdle()
 
             assertEquals("", viewModel.state.value.mainProjectText)
@@ -1030,10 +1066,12 @@ class OnBoardingInterviewViewModelTest {
                     createResult = Result.failure(IllegalStateException("세션 생성 실패")),
                 )
             val viewModel = loadedForPreload(interviewRepo)
-            repeat(3) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+            repeat(3) { viewModel.onIntent(FlowIntent.ClickSkip) }
             advanceUntilIdle()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickPreloadFailureAcknowledged)
+            viewModel.onIntent(
+                SessionIntent.ClickPreloadFailureAcknowledged,
+            )
 
             val state = viewModel.state.value
             assertEquals(OnBoardingInterviewStep.MainProject, state.step)
@@ -1049,7 +1087,7 @@ class OnBoardingInterviewViewModelTest {
             val portfolioRepo = FakePortfolioRepository()
             val viewModel = createViewModel(portfolioRepository = portfolioRepo)
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickPortfolioRemove)
+            viewModel.onIntent(PortfolioIntent.ClickPortfolioRemove)
             advanceUntilIdle()
 
             assertEquals(0, portfolioRepo.deleteCallCount)
@@ -1067,10 +1105,10 @@ class OnBoardingInterviewViewModelTest {
                         ),
                 )
             val viewModel = createViewModel(portfolioRepository = portfolioRepo)
-            viewModel.onIntent(OnBoardingInterviewIntent.Load)
+            viewModel.onIntent(FlowIntent.Load)
             advanceUntilIdle()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickPortfolioRemove)
+            viewModel.onIntent(PortfolioIntent.ClickPortfolioRemove)
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -1089,10 +1127,10 @@ class OnBoardingInterviewViewModelTest {
                     deleteResult = Result.failure(IllegalStateException("삭제 실패")),
                 )
             val viewModel = createViewModel(portfolioRepository = portfolioRepo)
-            viewModel.onIntent(OnBoardingInterviewIntent.Load)
+            viewModel.onIntent(FlowIntent.Load)
             advanceUntilIdle()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickPortfolioRemove)
+            viewModel.onIntent(PortfolioIntent.ClickPortfolioRemove)
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -1275,7 +1313,7 @@ class OnBoardingInterviewViewModelTest {
             val viewModel = createViewModel()
             val effect = async(start = CoroutineStart.UNDISPATCHED) { viewModel.effect.first() }
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickPrevious)
+            viewModel.onIntent(FlowIntent.ClickPrevious)
 
             assertEquals(OnBoardingInterviewEffect.CloseRequested, effect.await())
         }
@@ -1284,9 +1322,9 @@ class OnBoardingInterviewViewModelTest {
     fun `Portfolio에서 이전을 누르면 JobDescription으로 돌아간다`() =
         runViewModelTest {
             val viewModel = createViewModel()
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) // -> Portfolio
+            viewModel.onIntent(FlowIntent.ClickSkip) // -> Portfolio
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickPrevious)
+            viewModel.onIntent(FlowIntent.ClickPrevious)
 
             assertEquals(OnBoardingInterviewStep.JobDescription, viewModel.state.value.step)
         }
@@ -1295,9 +1333,9 @@ class OnBoardingInterviewViewModelTest {
     fun `MainProject에서 이전을 누르면 Portfolio로 돌아간다`() =
         runViewModelTest {
             val viewModel = createViewModel()
-            repeat(2) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) } // -> MainProject
+            repeat(2) { viewModel.onIntent(FlowIntent.ClickSkip) } // -> MainProject
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickPrevious)
+            viewModel.onIntent(FlowIntent.ClickPrevious)
 
             assertEquals(OnBoardingInterviewStep.Portfolio, viewModel.state.value.step)
         }
@@ -1308,7 +1346,7 @@ class OnBoardingInterviewViewModelTest {
             val viewModel = createViewModel()
             val effect = async(start = CoroutineStart.UNDISPATCHED) { viewModel.effect.first() }
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickClose)
+            viewModel.onIntent(FlowIntent.ClickClose)
 
             assertEquals(OnBoardingInterviewEffect.CloseRequested, effect.await())
         }
@@ -1318,7 +1356,7 @@ class OnBoardingInterviewViewModelTest {
         runViewModelTest {
             val viewModel = createViewModel()
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip)
+            viewModel.onIntent(FlowIntent.ClickSkip)
 
             assertEquals(OnBoardingInterviewStep.Portfolio, viewModel.state.value.step)
         }
@@ -1329,7 +1367,7 @@ class OnBoardingInterviewViewModelTest {
             val viewModel = createViewModel()
             val effect = async(start = CoroutineStart.UNDISPATCHED) { viewModel.effect.first() }
 
-            viewModel.onIntent(OnBoardingInterviewIntent.ClickPortfolioUpload)
+            viewModel.onIntent(PortfolioIntent.ClickPortfolioUpload)
 
             assertEquals(OnBoardingInterviewEffect.LaunchPortfolioPicker, effect.await())
         }
@@ -1437,8 +1475,8 @@ class OnBoardingInterviewViewModelTest {
         assertFalse(state.isPortfolioProcessing)
     }
 
-    private fun portfolioSelected(): OnBoardingInterviewIntent.PortfolioFileSelected =
-        OnBoardingInterviewIntent.PortfolioFileSelected(file = File("a.pdf"), fileName = "a.pdf")
+    private fun portfolioSelected(): PortfolioIntent.PortfolioFileSelected =
+        PortfolioIntent.PortfolioFileSelected(file = File("a.pdf"), fileName = "a.pdf")
 
     private fun viewModelWithExisting(
         replace: Boolean,
@@ -1453,8 +1491,8 @@ class OnBoardingInterviewViewModelTest {
                     ),
             )
         // load로 existingPortfolioId를 채운 뒤 Portfolio 스텝으로 이동한다.
-        viewModel.onIntent(OnBoardingInterviewIntent.Load)
-        viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip)
+        viewModel.onIntent(FlowIntent.Load)
+        viewModel.onIntent(FlowIntent.ClickSkip)
         return viewModel
     }
 
@@ -1467,13 +1505,13 @@ class OnBoardingInterviewViewModelTest {
                     FakePortfolioRepository(overviewResult = Result.success(readyOverview())),
                 interviewRepository = interviewRepository,
             )
-        viewModel.onIntent(OnBoardingInterviewIntent.Load)
+        viewModel.onIntent(FlowIntent.Load)
         advanceUntilIdle()
         return viewModel
     }
 
     private fun moveToMainProject(viewModel: OnBoardingInterviewViewModel) {
-        repeat(2) { viewModel.onIntent(OnBoardingInterviewIntent.ClickSkip) }
+        repeat(2) { viewModel.onIntent(FlowIntent.ClickSkip) }
     }
 
     private fun readySessionRepo(sessionId: Long = 1L): FakeInterviewRepository =
