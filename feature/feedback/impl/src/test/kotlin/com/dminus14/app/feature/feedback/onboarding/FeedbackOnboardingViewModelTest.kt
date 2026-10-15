@@ -1,5 +1,6 @@
 package com.dminus14.app.feature.feedback.onboarding
 
+import androidx.lifecycle.ViewModelStore
 import com.dminus14.app.core.common.event.GlobalAppEvent
 import com.dminus14.app.core.common.event.GlobalErrorHandler
 import com.dminus14.app.core.common.modal.GlobalModalResult
@@ -162,5 +163,26 @@ class FeedbackOnboardingViewModelTest {
             runCurrent()
 
             assertEquals(FeedbackOnboardingEffect.ExitRequested, exitEffect.await())
+        }
+
+    @Test
+    fun `종료된 화면의 조회 결과는 새 세션이나 실패 상태를 만들지 않는다`() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val repository = FakeGuestFeedbackRepository(enterGate = gate)
+            val session = GuestFeedbackFlowSession()
+            val enterFeedback = EnterGuestFeedbackUseCase(repository)
+            val viewModel = FeedbackOnboardingViewModel(enterFeedback, session)
+            val store = ViewModelStore().apply { put("entry", viewModel) }
+            viewModel.onIntent(FeedbackOnboardingIntent.Load("synthetic-token"))
+            runCurrent()
+
+            store.clear()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(FeedbackOnboardingLoadState.Loading, viewModel.state.value.loadState)
+            assertEquals(null, session.snapshot())
+            assertEquals(1, repository.enterCount)
         }
 }

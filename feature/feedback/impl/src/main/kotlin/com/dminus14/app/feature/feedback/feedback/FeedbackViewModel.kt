@@ -1,16 +1,17 @@
 package com.dminus14.app.feature.feedback.feedback
 
-import androidx.lifecycle.viewModelScope
 import com.dminus14.app.core.common.modal.GlobalModalRequest
 import com.dminus14.app.core.common.modal.GlobalModalResult
 import com.dminus14.app.core.common.modal.showGlobalModal
+import com.dminus14.app.core.common.mvi.MviReducer
 import com.dminus14.app.core.common.mvi.MviViewModel
 import com.dminus14.app.domain.model.GuestFeedbackAxisCode
+import com.dminus14.app.feature.feedback.session.CommentEditorState
 import com.dminus14.app.feature.feedback.session.GuestFeedbackCommentEditor
+import com.dminus14.app.feature.feedback.session.GuestFeedbackFlowData
 import com.dminus14.app.feature.feedback.session.GuestFeedbackFlowSession
 import com.dminus14.app.feature.feedback.session.MAX_COMMENT_LENGTH
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -19,6 +20,7 @@ class FeedbackViewModel
     constructor(
         private val session: GuestFeedbackFlowSession,
     ) : MviViewModel<FeedbackIntent, FeedbackState, FeedbackEffect>(FeedbackState()) {
+        private val context = createContext(FeedbackReducer)
         private val commentEditor = GuestFeedbackCommentEditor(session)
 
         override fun onIntent(intent: FeedbackIntent) {
@@ -28,9 +30,7 @@ class FeedbackViewModel
                 }
 
                 is FeedbackIntent.AxisSelected -> {
-                    reduce {
-                        copy(selectedAxis = intent.axis, isVideoExpanded = false)
-                    }
+                    context.dispatch(FeedbackMutation.AxisSelected(intent.axis))
                 }
 
                 is FeedbackIntent.RatingSelected -> {
@@ -42,11 +42,7 @@ class FeedbackViewModel
                 }
 
                 is FeedbackIntent.CommentChanged -> {
-                    reduce {
-                        copy(
-                            editingValue = intent.value.take(MAX_COMMENT_LENGTH),
-                        )
-                    }
+                    context.dispatch(FeedbackMutation.CommentChanged(intent.value))
                 }
 
                 FeedbackIntent.CommentConfirmed -> {
@@ -58,11 +54,11 @@ class FeedbackViewModel
                 }
 
                 FeedbackIntent.VideoExpanded -> {
-                    reduce { copy(isVideoExpanded = true) }
+                    context.dispatch(FeedbackMutation.VideoExpanded)
                 }
 
                 FeedbackIntent.VideoIntroCompleted -> {
-                    reduce { copy(isVideoIntroVisible = false) }
+                    context.dispatch(FeedbackMutation.VideoIntroCompleted)
                 }
 
                 FeedbackIntent.VideoPlaybackFailed -> {
@@ -83,30 +79,20 @@ class FeedbackViewModel
             if (state.value.hasLoaded) return
             val data =
                 session.snapshot() ?: run {
-                    sendEffect(FeedbackEffect.ExitRequested)
+                    context.sendEffect(FeedbackEffect.ExitRequested)
                     return
                 }
 
             if (data.videoUrl.isBlank()) {
                 handlePlaybackFailure()
             } else {
-                reduce {
-                    copy(
-                        requesterName = data.requesterName,
-                        videoUrl = data.videoUrl,
-                        axes =
-                            data.axes.map { axis ->
-                                val draft = data.ratings[axis.code]
-                                FeedbackAxisUiModel(
-                                    code = axis.code,
-                                    title = axis.code.title,
-                                    level = draft?.level,
-                                    comment = draft?.comment.orEmpty(),
-                                )
-                            },
-                        hasLoaded = true,
-                    )
-                }
+                context.dispatch(
+                    FeedbackMutation.SessionLoaded(
+                        data.requesterName,
+                        data.videoUrl,
+                        data.toAxisUiModels(),
+                    ),
+                )
             }
         }
 
@@ -118,20 +104,7 @@ class FeedbackViewModel
                 return
             }
             session.updateLevel(axis, level)
-            reduce {
-                copy(
-                    axes =
-                        axes.map { item ->
-                            if (item.code ==
-                                axis
-                            ) {
-                                item.copy(level = level)
-                            } else {
-                                item
-                            }
-                        },
-                )
-            }
+            context.dispatch(FeedbackMutation.RatingAccepted(axis, level))
         }
 
         private fun openCommentEditor(axis: GuestFeedbackAxisCode) {
@@ -142,7 +115,7 @@ class FeedbackViewModel
                     getCode = { it.code },
                     getComment = { it.comment },
                 ) ?: return
-            reduce { withEditorState(editorState) }
+            context.dispatch(FeedbackMutation.EditorOpened(editorState))
         }
 
         private fun confirmComment() {
@@ -154,24 +127,24 @@ class FeedbackViewModel
                     getCode = { it.code },
                     updateComment = { item, comment -> item.copy(comment = comment) },
                 ) ?: return
-            reduce { copy(axes = newAxes).withEditorState(editorState) }
+            context.dispatch(FeedbackMutation.CommentConfirmed(newAxes, editorState))
         }
 
         private fun dismissComment() {
             val editorState = commentEditor.dismiss()
-            reduce { withEditorState(editorState) }
+            context.dispatch(FeedbackMutation.EditorDismissed(editorState))
         }
 
         private fun review() {
             if (state.value.canReview && !state.value.isPlaybackBlocked) {
-                sendEffect(FeedbackEffect.ReviewReady)
+                context.sendEffect(FeedbackEffect.ReviewReady)
             }
         }
 
         private fun confirmExit() {
             if (state.value.isPlaybackBlocked) return
 
-            viewModelScope.launch {
+            context.launch {
                 val result =
                     showGlobalModal(
                         GlobalModalRequest(
@@ -184,7 +157,7 @@ class FeedbackViewModel
                     )
                 if (result == GlobalModalResult.Confirm) {
                     session.clear()
-                    sendEffect(FeedbackEffect.ExitRequested)
+                    context.sendEffect(FeedbackEffect.ExitRequested)
                 }
             }
         }
@@ -192,20 +165,9 @@ class FeedbackViewModel
         private fun handlePlaybackFailure() {
             if (state.value.isPlaybackBlocked) return
             val data = session.snapshot()
-            val axes =
-                data
-                    ?.axes
-                    ?.map { axis ->
-                        val draft = data.ratings[axis.code]
-                        FeedbackAxisUiModel(
-                            code = axis.code,
-                            title = axis.code.title,
-                            level = draft?.level,
-                            comment = draft?.comment.orEmpty(),
-                        )
-                    }.orEmpty()
-            reduce { copy(isPlaybackBlocked = true, axes = axes) }
-            viewModelScope.launch {
+            val axes = data?.toAxisUiModels().orEmpty()
+            context.dispatch(FeedbackMutation.PlaybackBlocked(axes))
+            context.launch {
                 val result =
                     showGlobalModal(
                         GlobalModalRequest(
@@ -217,7 +179,7 @@ class FeedbackViewModel
                     )
                 if (result == GlobalModalResult.Confirm) {
                     session.clear()
-                    sendEffect(FeedbackEffect.ExitRequested)
+                    context.sendEffect(FeedbackEffect.ExitRequested)
                 }
             }
         }
@@ -235,3 +197,133 @@ internal val GuestFeedbackAxisCode.title: String
 
 private const val MIN_RATING_LEVEL = 1
 private const val MAX_RATING_LEVEL = 4
+
+private sealed interface FeedbackMutation {
+    data class AxisSelected(
+        val axis: GuestFeedbackAxisCode,
+    ) : FeedbackMutation
+
+    data class CommentChanged(
+        val value: String,
+    ) : FeedbackMutation
+
+    data object VideoExpanded : FeedbackMutation
+
+    data object VideoIntroCompleted : FeedbackMutation
+
+    data class SessionLoaded(
+        val name: String,
+        val videoUrl: String,
+        val axes: List<FeedbackAxisUiModel>,
+    ) : FeedbackMutation
+
+    data class RatingAccepted(
+        val axis: GuestFeedbackAxisCode,
+        val level: Int,
+    ) : FeedbackMutation
+
+    data class EditorOpened(
+        val editorState: CommentEditorState,
+    ) : FeedbackMutation
+
+    data class CommentConfirmed(
+        val axes: List<FeedbackAxisUiModel>,
+        val editorState: CommentEditorState,
+    ) : FeedbackMutation
+
+    data class EditorDismissed(
+        val editorState: CommentEditorState,
+    ) : FeedbackMutation
+
+    data class PlaybackBlocked(
+        val axes: List<FeedbackAxisUiModel>,
+    ) : FeedbackMutation
+}
+
+/** 화면 상태 계산은 순수하며 세션 기록과 Modal 호출은 ViewModel에서 수행한다. */
+private object FeedbackReducer : MviReducer<FeedbackState, FeedbackMutation> {
+    override fun reduce(
+        state: FeedbackState,
+        mutation: FeedbackMutation,
+    ): FeedbackState =
+        with(state) {
+            when (mutation) {
+                is FeedbackMutation.AxisSelected -> {
+                    copy(
+                        selectedAxis = mutation.axis,
+                        isVideoExpanded = false,
+                    )
+                }
+
+                is FeedbackMutation.CommentChanged -> {
+                    copy(
+                        editingValue = mutation.value.take(MAX_COMMENT_LENGTH),
+                    )
+                }
+
+                FeedbackMutation.VideoExpanded -> {
+                    copy(isVideoExpanded = true)
+                }
+
+                FeedbackMutation.VideoIntroCompleted -> {
+                    copy(isVideoIntroVisible = false)
+                }
+
+                is FeedbackMutation.SessionLoaded -> {
+                    copy(
+                        requesterName = mutation.name,
+                        videoUrl = mutation.videoUrl,
+                        axes = mutation.axes,
+                        hasLoaded = true,
+                    )
+                }
+
+                is FeedbackMutation.RatingAccepted -> {
+                    copy(axes = ratedAxes(axes, mutation))
+                }
+
+                is FeedbackMutation.EditorOpened -> {
+                    withEditorState(mutation.editorState)
+                }
+
+                is FeedbackMutation.CommentConfirmed -> {
+                    val updated = copy(axes = mutation.axes)
+                    updated.withEditorState(mutation.editorState)
+                }
+
+                is FeedbackMutation.EditorDismissed -> {
+                    withEditorState(mutation.editorState)
+                }
+
+                is FeedbackMutation.PlaybackBlocked -> {
+                    copy(
+                        isPlaybackBlocked = true,
+                        axes = mutation.axes,
+                    )
+                }
+            }
+        }
+
+    private fun ratedAxes(
+        axes: List<FeedbackAxisUiModel>,
+        mutation: FeedbackMutation.RatingAccepted,
+    ): List<FeedbackAxisUiModel> =
+        axes.map { item ->
+            if (item.code == mutation.axis) {
+                item.copy(level = mutation.level)
+            } else {
+                item
+            }
+        }
+}
+
+private fun GuestFeedbackFlowData.toAxisUiModels(): List<FeedbackAxisUiModel> =
+    axes.map { axis ->
+        val draft = ratings[axis.code]
+        FeedbackAxisUiModel(
+            axis.code,
+            axis.code.title,
+            draft?.level,
+            draft?.comment.orEmpty(),
+        )
+    }
