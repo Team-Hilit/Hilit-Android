@@ -46,6 +46,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -55,6 +56,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -750,22 +752,25 @@ class HomeViewModelTest {
             eventJob.cancel()
         }
 
-    // ---- getInterviewState (internal 직접 호출) ----
-    // ReportSheetCollapsed 경유 케이스는 위 섹션에서 검증한다. 여기서는 internal API 단위 검증을 유지한다.
+    // ---- 진행 중 세션의 응답별 상태와 오류 ----
 
     @Test
-    fun `getInterviewState 시 RESUMABLE이면 InProgress 오버레이가 세팅된다`() =
+    fun `세션 확인 시 RESUMABLE이면 InProgress 오버레이가 세팅된다`() =
         runViewModelTest {
             val interviewRepo =
                 FakeInterviewRepository(
                     resumeResult =
                         Result.success(resumeStatus(InterviewResumeState.Resumable)),
                 )
-            val viewModel = createViewModel(interviewRepository = interviewRepo)
+            val viewModel =
+                createViewModel(
+                    interviewRepository = interviewRepo,
+                    progress = sampleProgress(sessionId = 777L),
+                )
             viewModel.onIntent(HomeIntent.Load)
             advanceUntilIdle()
 
-            viewModel.getInterviewState(sessionId = 777L)
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
             advanceUntilIdle()
 
             val overlay = viewModel.state.value.sessionStartOverlay
@@ -775,18 +780,22 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `getInterviewState 시 ENDED에 잔여 이용권이 있으면 Start 오버레이가 세팅된다`() =
+    fun `세션 확인 시 ENDED에 잔여 이용권이 있으면 Start 오버레이가 세팅된다`() =
         runViewModelTest {
             val interviewRepo =
                 FakeInterviewRepository(
                     resumeResult =
                         Result.success(resumeStatus(InterviewResumeState.Ended)),
                 )
-            val viewModel = createViewModel(interviewRepository = interviewRepo)
+            val viewModel =
+                createViewModel(
+                    interviewRepository = interviewRepo,
+                    progress = sampleProgress(sessionId = 42L),
+                )
             viewModel.onIntent(HomeIntent.Load)
             advanceUntilIdle()
 
-            viewModel.getInterviewState(sessionId = 42L)
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
             advanceUntilIdle()
 
             val overlay = viewModel.state.value.sessionStartOverlay
@@ -798,7 +807,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `getInterviewState 시 ENDED에 잔여 이용권이 0이면 NoTickets 오버레이가 세팅된다`() =
+    fun `세션 확인 시 ENDED에 잔여 이용권이 0이면 NoTickets 오버레이가 세팅된다`() =
         runViewModelTest {
             val interviewRepo =
                 FakeInterviewRepository(
@@ -815,11 +824,12 @@ class HomeViewModelTest {
                                 ),
                         ),
                     interviewRepository = interviewRepo,
+                    progress = sampleProgress(sessionId = 42L),
                 )
             viewModel.onIntent(HomeIntent.Load)
             advanceUntilIdle()
 
-            viewModel.getInterviewState(sessionId = 42L)
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
             advanceUntilIdle()
 
             assertTrue(
@@ -828,7 +838,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `getInterviewState 시 resumeState가 미정의 값이면 오버레이가 변하지 않는다`() =
+    fun `세션 확인 시 resumeState가 미정의 값이면 오버레이가 변하지 않는다`() =
         runViewModelTest {
             val interviewRepo =
                 FakeInterviewRepository(
@@ -837,18 +847,22 @@ class HomeViewModelTest {
                             resumeStatus(InterviewResumeState.Unknown("UNKNOWN_RAW")),
                         ),
                 )
-            val viewModel = createViewModel(interviewRepository = interviewRepo)
+            val viewModel =
+                createViewModel(
+                    interviewRepository = interviewRepo,
+                    progress = sampleProgress(sessionId = 42L),
+                )
             viewModel.onIntent(HomeIntent.Load)
             advanceUntilIdle()
 
-            viewModel.getInterviewState(sessionId = 42L)
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
             advanceUntilIdle()
 
             assertNull(viewModel.state.value.sessionStartOverlay)
         }
 
     @Test
-    fun `getInterviewState 실패가 NetworkUnavailableException이면 ShowNetworkErrorAndExit가 발행된다`() =
+    fun `세션 확인 실패가 NetworkUnavailableException이면 ShowNetworkErrorAndExit가 발행된다`() =
         runViewModelTest {
             val interviewRepo =
                 FakeInterviewRepository(
@@ -857,7 +871,11 @@ class HomeViewModelTest {
                             NetworkUnavailableException(errCode = "NETWORK_UNAVAILABLE"),
                         ),
                 )
-            val viewModel = createViewModel(interviewRepository = interviewRepo)
+            val viewModel =
+                createViewModel(
+                    interviewRepository = interviewRepo,
+                    progress = sampleProgress(sessionId = 42L),
+                )
             viewModel.onIntent(HomeIntent.Load)
             advanceUntilIdle()
             val globalEvents = mutableListOf<GlobalAppEvent>()
@@ -866,7 +884,7 @@ class HomeViewModelTest {
                     GlobalErrorHandler.events.collect { globalEvents.add(it.event) }
                 }
 
-            viewModel.getInterviewState(sessionId = 42L)
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
             advanceUntilIdle()
 
             assertEquals(GlobalAppEvent.ShowNetworkErrorAndExit, globalEvents.firstOrNull())
@@ -874,13 +892,17 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `getInterviewState 실패가 ServerException이면 ShowServerErrorAndExit가 발행된다`() =
+    fun `세션 확인 실패가 ServerException이면 ShowServerErrorAndExit가 발행된다`() =
         runViewModelTest {
             val interviewRepo =
                 FakeInterviewRepository(
                     resumeResult = Result.failure(ServerException(errCode = "SERVER")),
                 )
-            val viewModel = createViewModel(interviewRepository = interviewRepo)
+            val viewModel =
+                createViewModel(
+                    interviewRepository = interviewRepo,
+                    progress = sampleProgress(sessionId = 42L),
+                )
             viewModel.onIntent(HomeIntent.Load)
             advanceUntilIdle()
             val globalEvents = mutableListOf<GlobalAppEvent>()
@@ -889,7 +911,7 @@ class HomeViewModelTest {
                     GlobalErrorHandler.events.collect { globalEvents.add(it.event) }
                 }
 
-            viewModel.getInterviewState(sessionId = 42L)
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
             advanceUntilIdle()
 
             assertEquals(GlobalAppEvent.ShowServerErrorAndExit, globalEvents.firstOrNull())
@@ -897,13 +919,17 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `getInterviewState 실패가 기타 예외이면 ShowUnknownError가 발행된다`() =
+    fun `세션 확인 실패가 기타 예외이면 ShowUnknownError가 발행된다`() =
         runViewModelTest {
             val interviewRepo =
                 FakeInterviewRepository(
                     resumeResult = Result.failure(IllegalStateException("unknown")),
                 )
-            val viewModel = createViewModel(interviewRepository = interviewRepo)
+            val viewModel =
+                createViewModel(
+                    interviewRepository = interviewRepo,
+                    progress = sampleProgress(sessionId = 42L),
+                )
             viewModel.onIntent(HomeIntent.Load)
             advanceUntilIdle()
             val globalEvents = mutableListOf<GlobalAppEvent>()
@@ -912,7 +938,7 @@ class HomeViewModelTest {
                     GlobalErrorHandler.events.collect { globalEvents.add(it.event) }
                 }
 
-            viewModel.getInterviewState(sessionId = 42L)
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
             advanceUntilIdle()
 
             assertEquals(GlobalAppEvent.ShowUnknownError, globalEvents.firstOrNull())
@@ -1122,6 +1148,33 @@ class HomeViewModelTest {
 
     // ---- 테스트 유틸 ----
 
+    @Test
+    fun `닫은 세션 오버레이는 늦게 도착한 재개 조회 결과로 다시 열리지 않는다`() =
+        runViewModelTest {
+            val gate = CompletableDeferred<Unit>()
+            val repository =
+                FakeInterviewRepository(
+                    resumeResult = Result.success(resumeStatus(InterviewResumeState.Resumable)),
+                    resumeGate = gate,
+                )
+            val viewModel =
+                createViewModel(
+                    interviewRepository = repository,
+                    progress = sampleProgress(sessionId = 777L),
+                )
+            viewModel.onIntent(HomeIntent.Load)
+            advanceUntilIdle()
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
+            advanceUntilIdle()
+            assertEquals(listOf(777L), repository.resumeSessionIds)
+
+            viewModel.onIntent(HomeIntent.ClickSessionOverlayDismiss)
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.sessionStartOverlay)
+        }
+
     private fun runViewModelTest(block: suspend TestScope.() -> Unit) =
         runTest {
             val dispatcher = UnconfinedTestDispatcher(testScheduler)
@@ -1257,6 +1310,7 @@ class HomeViewModelTest {
             Result.success(InterviewReportList(reports = emptyList())),
         private val resumeResult: Result<InterviewResumeStatus>? = null,
         private val abandonResult: Result<InterviewAbandon>? = null,
+        private val resumeGate: CompletableDeferred<Unit>? = null,
     ) : InterviewRepository {
         var getReportListCallCount = 0
             private set
@@ -1293,6 +1347,7 @@ class HomeViewModelTest {
 
         override suspend fun getResume(sessionId: Long): InterviewResumeStatus {
             resumeSessionIds += sessionId
+            resumeGate?.let { gate -> withContext(NonCancellable) { gate.await() } }
             return resumeResult?.getOrThrow() ?: error("resumeResult가 세팅되지 않았습니다")
         }
 
