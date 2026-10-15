@@ -57,7 +57,7 @@ fun MyPageScreen(
     val filePickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri?.let { pickedUri ->
-                viewModel.onIntent(MyPageIntent.SelectPortfolioFile(pickedUri.toString()))
+                viewModel.onIntent(MyPageIntent.Portfolio.SelectPortfolioFile(pickedUri.toString()))
             }
         }
 
@@ -146,32 +146,44 @@ fun MyPageContent(
                     remainingTicketCount = state.remainingTicketCount,
                     socialAccount = state.socialAccount,
                     isTicketInfoTooltipVisible = state.isTicketInfoTooltipVisible,
-                    onProfileEditClick = { onIntent(MyPageIntent.ClickProfileEdit) },
-                    onTicketInfoClick = { onIntent(MyPageIntent.ClickTicketInfo) },
+                    onProfileEditClick = { onIntent(MyPageIntent.Account.ClickProfileEdit) },
+                    onTicketInfoClick = { onIntent(MyPageIntent.Account.ClickTicketInfo) },
                     onTicketInfoTooltipDismiss = {
-                        onIntent(MyPageIntent.DismissTicketInfoTooltip)
+                        onIntent(MyPageIntent.Account.DismissTicketInfoTooltip)
                     },
-                    onLogoutClick = { onIntent(MyPageIntent.ClickLogout) },
+                    onLogoutClick = { onIntent(MyPageIntent.Account.ClickLogout) },
                 )
                 MyPagePortfolioSection(
                     portfolioState = state.portfolioState,
                     isUploadFailureTooltipVisible = state.isUploadFailureTooltipVisible,
-                    onUploadClick = { onIntent(MyPageIntent.ClickUpload) },
-                    onUploadCancelClick = { onIntent(MyPageIntent.ClickUploadCancel) },
-                    onUploadRetryClick = { onIntent(MyPageIntent.ClickUploadRetry) },
-                    onUploadFailureInfoClick = { onIntent(MyPageIntent.ClickUploadFailureInfo) },
-                    onUploadFailureTooltipDismiss = {
-                        onIntent(MyPageIntent.DismissUploadFailureTooltip)
+                    onUploadClick = { onIntent(MyPageIntent.Portfolio.ClickUpload) },
+                    onUploadCancelClick = { onIntent(MyPageIntent.Portfolio.ClickUploadCancel) },
+                    onUploadRetryClick = { onIntent(MyPageIntent.Portfolio.ClickUploadRetry) },
+                    onUploadFailureInfoClick = {
+                        onIntent(
+                            MyPageIntent.Portfolio.ClickUploadFailureInfo,
+                        )
                     },
-                    onPortfolioDeleteClick = { onIntent(MyPageIntent.ClickPortfolioDelete) },
-                    onPortfolioReuploadClick = { onIntent(MyPageIntent.ClickPortfolioReupload) },
+                    onUploadFailureTooltipDismiss = {
+                        onIntent(MyPageIntent.Portfolio.DismissUploadFailureTooltip)
+                    },
+                    onPortfolioDeleteClick = {
+                        onIntent(
+                            MyPageIntent.Portfolio.ClickPortfolioDelete,
+                        )
+                    },
+                    onPortfolioReuploadClick = {
+                        onIntent(
+                            MyPageIntent.Portfolio.ClickPortfolioReupload,
+                        )
+                    },
                 )
                 MyPageReportSection(
                     reports = state.reports,
                     expandedReportIds = state.expandedReportIds,
-                    onReportToggleClick = { onIntent(MyPageIntent.ToggleReport(it)) },
-                    onReportViewClick = { onIntent(MyPageIntent.ClickReportView(it)) },
-                    onGuestFeedbackClick = { onIntent(MyPageIntent.ClickGuestFeedback(it)) },
+                    onReportToggleClick = { onIntent(MyPageIntent.Report.ToggleReport(it)) },
+                    onReportViewClick = { onIntent(MyPageIntent.Report.ClickReportView(it)) },
+                    onGuestFeedbackClick = { onIntent(MyPageIntent.Report.ClickGuestFeedback(it)) },
                 )
                 Spacer(modifier = Modifier.height(176.dp))
                 Text(
@@ -180,7 +192,7 @@ fun MyPageContent(
                         Modifier
                             .fillMaxWidth()
                             .clickable(role = Role.Button) {
-                                onIntent(MyPageIntent.ClickWithdrawal)
+                                onIntent(MyPageIntent.Account.ClickWithdrawal)
                             }.padding(vertical = 16.dp),
                     style = HilitTheme.typography.body6,
                     color = HilitTheme.colors.gray500,

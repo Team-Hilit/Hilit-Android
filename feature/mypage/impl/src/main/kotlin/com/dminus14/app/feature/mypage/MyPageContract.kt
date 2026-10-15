@@ -11,50 +11,55 @@ sealed interface MyPageIntent : MviIntent {
 
     data object ClickClose : MyPageIntent
 
-    data object ClickUpload : MyPageIntent
-
-    /** 파일 선택기 결과. ViewModel 테스트 편의를 위해 [Uri]가 아닌 문자열로 받는다. */
-    data class SelectPortfolioFile(
-        val uri: String,
-    ) : MyPageIntent
-
-    data object ClickUploadCancel : MyPageIntent
-
-    data object ClickUploadRetry : MyPageIntent
-
-    data object ClickUploadFailureInfo : MyPageIntent
-
-    data object DismissUploadFailureTooltip : MyPageIntent
-
-    data object ClickPortfolioDelete : MyPageIntent
-
-    data object ClickPortfolioReupload : MyPageIntent
-
     data object ConfirmModal : MyPageIntent
 
     data object CloseModal : MyPageIntent
 
-    data class ToggleReport(
-        val id: String,
-    ) : MyPageIntent
+    sealed interface Portfolio : MyPageIntent {
+        data object ClickUpload : Portfolio
 
-    data object ClickProfileEdit : MyPageIntent
+        data class SelectPortfolioFile(
+            val uri: String,
+        ) : Portfolio
 
-    data object ClickTicketInfo : MyPageIntent
+        data object ClickUploadCancel : Portfolio
 
-    data object DismissTicketInfoTooltip : MyPageIntent
+        data object ClickUploadRetry : Portfolio
 
-    data object ClickLogout : MyPageIntent
+        data object ClickUploadFailureInfo : Portfolio
 
-    data object ClickWithdrawal : MyPageIntent
+        data object DismissUploadFailureTooltip : Portfolio
 
-    data class ClickReportView(
-        val reportId: String,
-    ) : MyPageIntent
+        data object ClickPortfolioDelete : Portfolio
 
-    data class ClickGuestFeedback(
-        val reportId: String,
-    ) : MyPageIntent
+        data object ClickPortfolioReupload : Portfolio
+    }
+
+    sealed interface Account : MyPageIntent {
+        data object ClickProfileEdit : Account
+
+        data object ClickTicketInfo : Account
+
+        data object DismissTicketInfoTooltip : Account
+
+        data object ClickLogout : Account
+
+        data object ClickWithdrawal : Account
+    }
+
+    sealed interface Report : MyPageIntent {
+        data class ToggleReport(
+            val id: String,
+        ) : Report
+
+        data class ClickReportView(
+            val reportId: String,
+        ) : Report
+
+        data class ClickGuestFeedback(
+            val reportId: String,
+        ) : Report
+    }
 }
 
 @Immutable
