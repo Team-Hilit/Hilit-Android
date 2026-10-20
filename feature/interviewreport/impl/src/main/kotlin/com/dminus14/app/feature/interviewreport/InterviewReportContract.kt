@@ -7,7 +7,9 @@ import com.dminus14.app.core.common.mvi.MviState
 import com.dminus14.app.feature.interviewreport.model.ReportUiModel
 
 sealed interface InterviewReportIntent : MviIntent {
-    data object Load : InterviewReportIntent
+    data class Load(
+        val sessionId: Long,
+    ) : InterviewReportIntent
 
     data object ClickClose : InterviewReportIntent
 

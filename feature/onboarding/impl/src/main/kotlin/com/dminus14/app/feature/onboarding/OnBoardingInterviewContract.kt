@@ -6,71 +6,79 @@ import com.dminus14.app.core.common.mvi.MviState
 import java.io.File
 
 sealed interface OnBoardingInterviewIntent : MviIntent {
-    data object Load : OnBoardingInterviewIntent
+    sealed interface Flow : OnBoardingInterviewIntent {
+        data object Load : Flow
 
-    data object ClickClose : OnBoardingInterviewIntent
+        data object ClickClose : Flow
 
-    data object ClickSkip : OnBoardingInterviewIntent
+        data object ClickSkip : Flow
 
-    data object ClickContinue : OnBoardingInterviewIntent
+        data object ClickContinue : Flow
 
-    data object ClickPrevious : OnBoardingInterviewIntent
+        data object ClickPrevious : Flow
 
-    data class JobDescriptionTabChange(
-        val index: Int,
-    ) : OnBoardingInterviewIntent
+        data class MainProjectTextChange(
+            val value: String,
+        ) : Flow
+    }
 
-    data class JobDescriptionLinkChange(
-        val value: String,
-    ) : OnBoardingInterviewIntent
+    sealed interface JobDescription : OnBoardingInterviewIntent {
+        data class JobDescriptionTabChange(
+            val index: Int,
+        ) : JobDescription
 
-    data class JobDescriptionTextChange(
-        val value: String,
-    ) : OnBoardingInterviewIntent
+        data class JobDescriptionLinkChange(
+            val value: String,
+        ) : JobDescription
 
-    data object ClickPortfolioUpload : OnBoardingInterviewIntent
+        data class JobDescriptionTextChange(
+            val value: String,
+        ) : JobDescription
+    }
 
-    data object ClickPortfolioRemove : OnBoardingInterviewIntent
+    sealed interface Portfolio : OnBoardingInterviewIntent {
+        data object ClickPortfolioUpload : Portfolio
 
-    /** Portfolio 스텝 진입 시 화면이 발화한다. ViewModel 가드로 세션당 1회만 처리된다. */
-    data object PortfolioStepEntered : OnBoardingInterviewIntent
+        data object ClickPortfolioRemove : Portfolio
 
-    /** Case1: 기존 포트폴리오 안내 팝업 확인. */
-    data object ClickExistingPortfolioConfirm : OnBoardingInterviewIntent
+        /** Portfolio 스텝 진입 시 화면이 발화한다. ViewModel 가드로 세션당 1회만 처리된다. */
+        data object PortfolioStepEntered : Portfolio
 
-    /** Case2: 안내 팝업 배경/본문 탭 dismiss. */
-    data object ClickAutoDismissNotice : OnBoardingInterviewIntent
+        /** Case1: 기존 포트폴리오 안내 팝업 확인. */
+        data object ClickExistingPortfolioConfirm : Portfolio
 
-    /** Case2: 3초 자동 dismiss. */
-    data object AutoDismissNoticeTimedOut : OnBoardingInterviewIntent
+        /** Case2: 안내 팝업 배경/본문 탭 dismiss. */
+        data object ClickAutoDismissNotice : Portfolio
 
-    /** SAF 파일 선택기가 PDF를 캐시로 복사해 돌려준 결과. */
-    data class PortfolioFileSelected(
-        val file: File,
-        val fileName: String,
-    ) : OnBoardingInterviewIntent
+        /** Case2: 3초 자동 dismiss. */
+        data object AutoDismissNoticeTimedOut : Portfolio
 
-    data class MainProjectTextChange(
-        val value: String,
-    ) : OnBoardingInterviewIntent
+        /** SAF 파일 선택기가 PDF를 캐시로 복사해 돌려준 결과. */
+        data class PortfolioFileSelected(
+            val file: File,
+            val fileName: String,
+        ) : Portfolio
+    }
 
-    /**
-     * S3.5 연관성 판단이 4회 연속 실패했을 때 뜨는 다이얼로그의 선택지 중
-     * "포트폴리오 다시 올리기"를 눌렀을 때 발생한다.
-     */
-    data object ClickRelevanceRetryPortfolio : OnBoardingInterviewIntent
+    sealed interface SessionPreparation : OnBoardingInterviewIntent {
+        /**
+         * S3.5 연관성 판단이 4회 연속 실패했을 때 뜨는 다이얼로그의 선택지 중
+         * "포트폴리오 다시 올리기"를 눌렀을 때 발생한다.
+         */
+        data object ClickRelevanceRetryPortfolio : SessionPreparation
 
-    /**
-     * S3.5 연관성 판단이 4회 연속 실패했을 때 뜨는 다이얼로그의 선택지 중
-     * "집중 프로젝트 없이 진행"을 눌렀을 때 발생한다.
-     */
-    data object ClickRelevanceProceedWithoutMainProject : OnBoardingInterviewIntent
+        /**
+         * S3.5 연관성 판단이 4회 연속 실패했을 때 뜨는 다이얼로그의 선택지 중
+         * "집중 프로젝트 없이 진행"을 눌렀을 때 발생한다.
+         */
+        data object ClickRelevanceProceedWithoutMainProject : SessionPreparation
 
-    /**
-     * Preload(세션 생성/준비) 실패 다이얼로그의 확인 버튼. 다이얼로그를 닫고 사용자를
-     * 이전 스텝(MainProject)으로 되돌려 재시도 가능하게 만든다.
-     */
-    data object ClickPreloadFailureAcknowledged : OnBoardingInterviewIntent
+        /**
+         * Preload(세션 생성/준비) 실패 다이얼로그의 확인 버튼. 다이얼로그를 닫고 사용자를
+         * 이전 스텝(MainProject)으로 되돌려 재시도 가능하게 만든다.
+         */
+        data object ClickPreloadFailureAcknowledged : SessionPreparation
+    }
 }
 
 enum class ExistingPortfolioModalPhase {

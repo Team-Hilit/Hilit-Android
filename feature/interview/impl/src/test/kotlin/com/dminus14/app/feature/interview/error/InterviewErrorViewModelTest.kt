@@ -19,6 +19,7 @@ import com.dminus14.app.feature.interview.interview.InterviewRecoveryStore
 import com.dminus14.app.feature.interview.interview.InterviewViewModelTestFixture
 import com.dminus14.app.feature.interview.interview.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -62,6 +63,37 @@ class InterviewErrorViewModelTest {
                     .single()
                     .status,
             )
+        }
+
+    @Test
+    fun `연속 중단 입력은 서버 요청과 종료 결과를 한 번만 만든다`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val fixture = InterviewViewModelTestFixture()
+            val sessionId = InterviewViewModelTestFixture.SESSION_ID
+            fixture.manifests[sessionId] = InterviewMediaManifest(sessionId = sessionId)
+            fixture.abandonResult =
+                InterviewAbandon(
+                    sessionId = sessionId,
+                    status = InterviewTerminalStatus.Abandoned,
+                    abandonCause = InterviewAbandonCause.UserExit,
+                    endedAt = "",
+                    ticketOutcome = InterviewTicketOutcome.Committed,
+                    reportGenerating = false,
+                )
+            val viewModel = createViewModel(fixture)
+            val effects = mutableListOf<InterviewErrorEffect>()
+            backgroundScope.launch { viewModel.effect.collect { effects += it } }
+            viewModel.onIntent(InterviewErrorIntent.Load(InterviewErrorType.SERVER_TEMPORARY))
+            runCurrent()
+
+            viewModel.onIntent(InterviewErrorIntent.ClickAbort)
+            viewModel.onIntent(InterviewErrorIntent.ClickAbort)
+            runCurrent()
+            viewModel.onIntent(InterviewErrorIntent.ClickAbort)
+            runCurrent()
+
+            assertEquals(1, fixture.abandonCallCount)
+            assertEquals(listOf(InterviewErrorEffect.InterviewAbandonCompleted), effects)
         }
 
     private fun createViewModel(fixture: InterviewViewModelTestFixture) =

@@ -1,4 +1,4 @@
-package com.dminus14.app.feature.interview.interview
+package com.dminus14.app.feature.interview.interview.handler
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -12,10 +12,11 @@ import com.dminus14.app.domain.model.InterviewUploadNetworkPolicy
 import com.dminus14.app.domain.repository.InterviewWorkController
 import com.dminus14.app.domain.usecase.PrepareInterviewUploadUseCase
 import com.dminus14.app.feature.interview.device.InterviewStorageChecker
+import com.dminus14.app.feature.interview.interview.InterviewEffect
+import com.dminus14.app.feature.interview.interview.InterviewIntent
 import com.dminus14.app.feature.interview.media.InterviewAudioPlaybackRequest
 import com.dminus14.app.feature.interview.media.InterviewAudioPlayer
 import com.dminus14.app.feature.interview.media.InterviewMediaSessionManager
-import com.dminus14.app.feature.interview.media.InterviewRecordingEvent
 import com.dminus14.app.feature.interview.media.InterviewSpeechDetectionEvent
 import com.dminus14.app.feature.interview.media.InterviewVideoRecorder
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -44,7 +45,7 @@ class InterviewScreenEffectHandler
 
         fun checkStorage(onIntent: (InterviewIntent) -> Unit) {
             val status = storageChecker.check()
-            onIntent(InterviewIntent.ReportStorageAvailability(status.availableBytes))
+            onIntent(InterviewIntent.Preparation.ReportStorageAvailability(status.availableBytes))
         }
 
         @SuppressLint("MissingPermission")
@@ -78,7 +79,7 @@ class InterviewScreenEffectHandler
                 )
             }.onFailure { error ->
                 if (error is CancellationException) throw error
-                onIntent(InterviewIntent.ReportRecordingFailure)
+                onIntent(InterviewIntent.Finalization.ReportRecordingFailure)
             }
         }
 
@@ -95,9 +96,13 @@ class InterviewScreenEffectHandler
             audioPlayer.play(
                 InterviewAudioPlaybackRequest.AuthenticatedQuestionStream(url),
                 playbackListener(
-                    onStarted = { onIntent(InterviewIntent.ReportQuestionPlaybackStarted) },
-                    onCompleted = { onIntent(InterviewIntent.ReportQuestionPlaybackCompleted) },
-                    onFailure = { onIntent(InterviewIntent.ReportQuestionPlaybackFailure) },
+                    onStarted = { onIntent(InterviewIntent.Turn.ReportQuestionPlaybackStarted) },
+                    onCompleted = {
+                        onIntent(
+                            InterviewIntent.Turn.ReportQuestionPlaybackCompleted,
+                        )
+                    },
+                    onFailure = { onIntent(InterviewIntent.Turn.ReportQuestionPlaybackFailure) },
                 ),
             )
         }
@@ -110,8 +115,16 @@ class InterviewScreenEffectHandler
                 InterviewAudioPlaybackRequest.Base64WrapUpMp3(payload),
                 playbackListener(
                     onStarted = {},
-                    onCompleted = { onIntent(InterviewIntent.ReportWrapUpPlaybackCompleted) },
-                    onFailure = { onIntent(InterviewIntent.ReportWrapUpPlaybackFailure) },
+                    onCompleted = {
+                        onIntent(
+                            InterviewIntent.Finalization.ReportWrapUpPlaybackCompleted,
+                        )
+                    },
+                    onFailure = {
+                        onIntent(
+                            InterviewIntent.Finalization.ReportWrapUpPlaybackFailure,
+                        )
+                    },
                 ),
             )
         }
@@ -126,10 +139,10 @@ class InterviewScreenEffectHandler
                     effect.outputSegment.mediaRef,
                 )
             }.onSuccess {
-                onIntent(InterviewIntent.ReportAnswerRecordingCompleted(effect.outputSegment))
+                onIntent(InterviewIntent.Turn.ReportAnswerRecordingCompleted(effect.outputSegment))
             }.onFailure { error ->
                 if (error is CancellationException) throw error
-                onIntent(InterviewIntent.ReportAnswerAudioMergeFailure)
+                onIntent(InterviewIntent.Turn.ReportAnswerAudioMergeFailure)
             }
         }
 
@@ -148,15 +161,15 @@ class InterviewScreenEffectHandler
                 override fun onSpeechEvent(event: InterviewSpeechDetectionEvent) {
                     when (event) {
                         InterviewSpeechDetectionEvent.SpeechStarted -> {
-                            onIntent(InterviewIntent.ReportAnswerSpeechStarted)
+                            onIntent(InterviewIntent.Turn.ReportAnswerSpeechStarted)
                         }
 
                         InterviewSpeechDetectionEvent.SilenceElapsed -> {
-                            onIntent(InterviewIntent.ReportAnswerSilenceElapsed)
+                            onIntent(InterviewIntent.Turn.ReportAnswerSilenceElapsed)
                         }
 
                         InterviewSpeechDetectionEvent.MicrophoneFailure -> {
-                            onIntent(InterviewIntent.ReportMicrophoneFailure)
+                            onIntent(InterviewIntent.Preparation.ReportMicrophoneFailure)
                         }
                     }
                 }
@@ -165,7 +178,7 @@ class InterviewScreenEffectHandler
                     segment: com.dminus14.app.domain.model.InterviewMediaSegment,
                 ) {
                     lastSegmentFinalizedAtMillis = SystemClock.elapsedRealtime()
-                    onIntent(InterviewIntent.ReportRecordingSegmentFinalized(segment))
+                    onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(segment))
                 }
 
                 override fun onFinalizeCheckpointRequested(
@@ -174,7 +187,7 @@ class InterviewScreenEffectHandler
                 ) = Unit
 
                 override fun onFailure(cause: Throwable) {
-                    onIntent(InterviewIntent.ReportRecordingFailure)
+                    onIntent(InterviewIntent.Finalization.ReportRecordingFailure)
                 }
             }
 

@@ -27,6 +27,7 @@ import com.dminus14.designsystem.component.icon.HilitIconAsset
 import com.dminus14.designsystem.component.tag.TagColorType
 import com.dminus14.designsystem.component.text.withHilitTextHighlight
 import com.dminus14.designsystem.theme.HilitTheme
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.Portfolio as PortfolioIntent
 
 private val SubtitleToLabelSpacing = 30.dp
 private val LabelToUploadSpacing = 10.dp
@@ -78,7 +79,11 @@ fun OnBoardingPortfolioStep(
             // 업로드된(또는 처리 중) 포트폴리오가 있으면 업로드 가이드는 숨긴다.
             if (fileName == null && !isProcessing) {
                 FileUploadGuide(
-                    onClick = { onIntent(OnBoardingInterviewIntent.ClickPortfolioUpload) },
+                    onClick = {
+                        onIntent(
+                            PortfolioIntent.ClickPortfolioUpload,
+                        )
+                    },
                     modifier = Modifier.padding(top = LabelToUploadSpacing),
                 )
             }
@@ -101,7 +106,7 @@ fun OnBoardingPortfolioStep(
                 progress = uploadProgress.toFloat(),
                 onCloseClick =
                     if (fileName != null && !isProcessing) {
-                        { onIntent(OnBoardingInterviewIntent.ClickPortfolioRemove) }
+                        { onIntent(PortfolioIntent.ClickPortfolioRemove) }
                     } else {
                         null
                     },

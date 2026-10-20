@@ -1,8 +1,8 @@
 package com.dminus14.app.feature.login.permission
 
-import androidx.lifecycle.viewModelScope
 import com.dminus14.app.core.common.event.GlobalAppEvent
 import com.dminus14.app.core.common.event.GlobalErrorHandler
+import com.dminus14.app.core.common.mvi.MviReducer
 import com.dminus14.app.core.common.mvi.MviViewModel
 import com.dminus14.app.core.permission.PermissionManager
 import com.dminus14.app.domain.exception.NetworkUnavailableException
@@ -10,7 +10,6 @@ import com.dminus14.app.domain.exception.ServerException
 import com.dminus14.app.domain.exception.UserNotFoundException
 import com.dminus14.app.domain.usecase.CheckUserProfileUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -23,10 +22,12 @@ class PermissionConsentViewModel
     ) : MviViewModel<PermissionConsentIntent, PermissionConsentState, PermissionConsentEffect>(
             PermissionConsentState(),
         ) {
+        private val mvi = createContext(PermissionConsentReducer)
+
         override fun onIntent(intent: PermissionConsentIntent) {
             when (intent) {
                 PermissionConsentIntent.ClickAllow -> {
-                    sendEffect(PermissionConsentEffect.RequestPermissions)
+                    mvi.sendEffect(PermissionConsentEffect.RequestPermissions)
                 }
 
                 PermissionConsentIntent.ClickLater -> {
@@ -37,7 +38,7 @@ class PermissionConsentViewModel
                     if (intent.allGranted) {
                         routeByProfile()
                     } else {
-                        sendEffect(PermissionConsentEffect.NavigateDenied)
+                        mvi.sendEffect(PermissionConsentEffect.NavigateDenied)
                     }
                 }
             }
@@ -49,22 +50,22 @@ class PermissionConsentViewModel
          * 필수 값이 비어 있으면 온보딩으로 보낸다.
          */
         private fun routeByProfile() {
-            reduce { copy(isLoading = true) }
-            viewModelScope.launch {
+            mvi.dispatch(PermissionConsentMutation.ProfileLookupStarted)
+            mvi.launch {
                 checkUserProfile()
                     .onSuccess { profile ->
-                        reduce { copy(isLoading = false) }
+                        mvi.dispatch(PermissionConsentMutation.ProfileLookupFinished)
                         if (profile.name.isNullOrBlank()) {
-                            sendEffect(PermissionConsentEffect.NavigateOnboarding)
+                            mvi.sendEffect(PermissionConsentEffect.NavigateOnboarding)
                         } else {
-                            sendEffect(PermissionConsentEffect.NavigateHome)
+                            mvi.sendEffect(PermissionConsentEffect.NavigateHome)
                         }
                     }.onFailure { error ->
                         when (error) {
                             // API 예외: 프로필 미등록은 온보딩으로 보낸다.
                             is UserNotFoundException -> {
-                                reduce { copy(isLoading = false) }
-                                sendEffect(PermissionConsentEffect.NavigateOnboarding)
+                                mvi.dispatch(PermissionConsentMutation.ProfileLookupFinished)
+                                mvi.sendEffect(PermissionConsentEffect.NavigateOnboarding)
                             }
 
                             // 그 외 전송·서버·알 수 없는 오류는 공통 처리로 위임한다.
@@ -78,7 +79,7 @@ class PermissionConsentViewModel
 
         // 아래 에러 처리 사항은 임시입니다. 공통 처리 기획자 문의 모든 ViewModel 일괄 수정 예정
         private suspend fun handleCommonError(error: Throwable) {
-            reduce { copy(isLoading = false) }
+            mvi.dispatch(PermissionConsentMutation.ProfileLookupFinished)
             when (error) {
                 is NetworkUnavailableException -> {
                     GlobalErrorHandler.emit(GlobalAppEvent.ShowNetworkErrorAndExit)
@@ -94,3 +95,24 @@ class PermissionConsentViewModel
             }
         }
     }
+
+private sealed interface PermissionConsentMutation {
+    data object ProfileLookupStarted : PermissionConsentMutation
+
+    data object ProfileLookupFinished : PermissionConsentMutation
+}
+
+/** 사용자 입력과 비동기 결과를 화면 상태로만 계산한다. */
+private object PermissionConsentReducer :
+    MviReducer<PermissionConsentState, PermissionConsentMutation> {
+    override fun reduce(
+        state: PermissionConsentState,
+        mutation: PermissionConsentMutation,
+    ): PermissionConsentState =
+        with(state) {
+            when (mutation) {
+                PermissionConsentMutation.ProfileLookupStarted -> copy(isLoading = true)
+                PermissionConsentMutation.ProfileLookupFinished -> copy(isLoading = false)
+            }
+        }
+}

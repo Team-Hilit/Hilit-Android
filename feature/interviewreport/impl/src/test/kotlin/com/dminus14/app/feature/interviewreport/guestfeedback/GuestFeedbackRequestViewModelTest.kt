@@ -67,9 +67,7 @@ class GuestFeedbackRequestViewModelTest {
     fun `저장된 token 이 없으면 Load 후에도 종료 가능 상태가 아니다`() =
         runTest {
             val viewModel = viewModel(FakeFeedbackShareRepository())
-            viewModel.bindSessionId(7L)
-
-            viewModel.onIntent(GuestFeedbackRequestIntent.Load)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
             advanceUntilIdle()
 
             assertFalse(viewModel.state.value.hasActiveShare)
@@ -80,9 +78,7 @@ class GuestFeedbackRequestViewModelTest {
         runTest {
             val localRepository = FakeFeedbackShareLocalRepository(mapOf(7L to "saved-token"))
             val viewModel = viewModel(FakeFeedbackShareRepository(), localRepository)
-            viewModel.bindSessionId(7L)
-
-            viewModel.onIntent(GuestFeedbackRequestIntent.Load)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
             advanceUntilIdle()
 
             assertTrue(viewModel.state.value.hasActiveShare)
@@ -99,7 +95,7 @@ class GuestFeedbackRequestViewModelTest {
                     localRepository = localRepository,
                     dynamicLinkRepository = dynamicLinkRepository,
                 )
-            viewModel.bindSessionId(7L)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
 
             viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
             advanceUntilIdle()
@@ -122,7 +118,7 @@ class GuestFeedbackRequestViewModelTest {
                     repository = FakeFeedbackShareRepository(token = "abc123"),
                     dynamicLinkRepository = dynamicLinkRepository,
                 )
-            viewModel.bindSessionId(7L)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
 
             viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
             advanceUntilIdle()
@@ -137,8 +133,7 @@ class GuestFeedbackRequestViewModelTest {
             val localRepository = FakeFeedbackShareLocalRepository(mapOf(7L to "saved-token"))
             val repository = FakeFeedbackShareRepository()
             val viewModel = viewModel(repository, localRepository)
-            viewModel.bindSessionId(7L)
-            viewModel.onIntent(GuestFeedbackRequestIntent.Load)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
             advanceUntilIdle()
 
             val effects = mutableListOf<GuestFeedbackRequestEffect>()
@@ -166,7 +161,7 @@ class GuestFeedbackRequestViewModelTest {
                         ),
                 )
             val viewModel = viewModel(repository)
-            viewModel.bindSessionId(7L)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
 
             val effects = mutableListOf<GuestFeedbackRequestEffect>()
             val job = TestScope(dispatcher).launch { viewModel.effect.collect { effects += it } }
@@ -198,7 +193,7 @@ class GuestFeedbackRequestViewModelTest {
                         ),
                 )
             val viewModel = viewModel(repository)
-            viewModel.bindSessionId(7L)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
 
             viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
             advanceUntilIdle()
@@ -210,9 +205,9 @@ class GuestFeedbackRequestViewModelTest {
     @Test
     fun `서버에 이미 활성 링크가 있고 로컬에 실제 token 이 남아있으면 그 token 으로 링크를 복구한다`() =
         runTest {
-            // 생성 API 는 충돌 시 기존 token 을 돌려주지 않는다. 이 기기에 이전에 저장해둔 실제
-            // token 이 남아있으면, 방금 생성에 성공한 것과 동일하게 링크를 다시 만들어 보여준다.
-            val localRepository = FakeFeedbackShareLocalRepository(mapOf(7L to "already-saved"))
+            // 초기 조회 뒤 다른 요청이 실제 token 을 저장한 경합을 재현한다.
+            // 생성 충돌 응답에는 token 이 없으므로 저장된 값으로 링크를 복구해야 한다.
+            val localRepository = FakeFeedbackShareLocalRepository()
             val dynamicLinkRepository = FakeDynamicLinkRepository()
             val repository =
                 FakeFeedbackShareRepository(
@@ -228,7 +223,9 @@ class GuestFeedbackRequestViewModelTest {
                     localRepository = localRepository,
                     dynamicLinkRepository = dynamicLinkRepository,
                 )
-            viewModel.bindSessionId(7L)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
+            advanceUntilIdle()
+            localRepository.saveToken(7L, "already-saved")
 
             viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
             advanceUntilIdle()
@@ -254,7 +251,7 @@ class GuestFeedbackRequestViewModelTest {
                         ),
                 )
             val viewModel = viewModel(repository)
-            viewModel.bindSessionId(7L)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
 
             val effects = mutableListOf<GuestFeedbackRequestEffect>()
             val job = TestScope(dispatcher).launch { viewModel.effect.collect { effects += it } }

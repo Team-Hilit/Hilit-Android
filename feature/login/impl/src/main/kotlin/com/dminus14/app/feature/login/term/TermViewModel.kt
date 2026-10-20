@@ -1,8 +1,8 @@
 package com.dminus14.app.feature.login.term
 
-import androidx.lifecycle.viewModelScope
 import com.dminus14.app.core.common.event.GlobalAppEvent
 import com.dminus14.app.core.common.event.GlobalErrorHandler
+import com.dminus14.app.core.common.mvi.MviReducer
 import com.dminus14.app.core.common.mvi.MviViewModel
 import com.dminus14.app.core.permission.AppPermission
 import com.dminus14.app.core.permission.PermissionManager
@@ -21,36 +21,35 @@ import com.dminus14.app.domain.usecase.GetConsentDocumentUseCase
 import com.dminus14.app.domain.usecase.GetPendingConsentListUseCase
 import com.dminus14.app.domain.usecase.SubmitConsentUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class TermViewModel
-    @Inject
-    constructor(
+    internal constructor(
         private val getPendingConsentList: GetPendingConsentListUseCase,
         private val getConsentDocument: GetConsentDocumentUseCase,
         private val submitConsent: SubmitConsentUseCase,
         private val checkUserProfile: CheckUserProfileUseCase,
         private val permissionManager: PermissionManager,
-    ) : MviViewModel<TermIntent, TermState, TermEffect>(TermState()) {
-        /** 테스트 전용: 초기 State를 주입한다. UseCase는 실제 fake로 넘겨야 한다. */
-        internal constructor(
+        initialState: TermState,
+    ) : MviViewModel<TermIntent, TermState, TermEffect>(initialState) {
+        @Inject
+        constructor(
             getPendingConsentList: GetPendingConsentListUseCase,
             getConsentDocument: GetConsentDocumentUseCase,
             submitConsent: SubmitConsentUseCase,
             checkUserProfile: CheckUserProfileUseCase,
             permissionManager: PermissionManager,
-            initialState: TermState,
         ) : this(
             getPendingConsentList,
             getConsentDocument,
             submitConsent,
             checkUserProfile,
             permissionManager,
-        ) {
-            reduce { initialState }
-        }
+            TermState(),
+        )
+
+        private val mvi = createContext(TermReducer)
 
         override fun onIntent(intent: TermIntent) {
             when (intent) {
@@ -59,7 +58,7 @@ class TermViewModel
                 }
 
                 TermIntent.ClickClose -> {
-                    sendEffect(TermEffect.Closed)
+                    mvi.sendEffect(TermEffect.Closed)
                 }
 
                 TermIntent.ClickAllAgree -> {
@@ -75,7 +74,7 @@ class TermViewModel
                 }
 
                 TermIntent.DismissTermDetail -> {
-                    reduce { copy(visibleTermDetail = null) }
+                    mvi.dispatch(TermMutation.DetailDismissed)
                 }
 
                 TermIntent.ClickAgree -> {
@@ -86,8 +85,8 @@ class TermViewModel
 
         private fun loadPending() {
             if (state.value.isLoading) return
-            reduce { copy(isLoading = true) }
-            viewModelScope.launch {
+            mvi.dispatch(TermMutation.OperationStarted)
+            mvi.launch {
                 getPendingConsentList()
                     .onSuccess { pending ->
                         when (pending.status) {
@@ -95,12 +94,11 @@ class TermViewModel
                             ConsentPendingStatus.STALE,
                             ConsentPendingStatus.UNKNOWN,
                             -> {
-                                reduce {
-                                    copy(
-                                        terms = pending.items.map { TermConsentItem(item = it) },
-                                        isLoading = false,
-                                    )
-                                }
+                                mvi.dispatch(
+                                    TermMutation.PendingLoaded(
+                                        pending.items.map { TermConsentItem(item = it) },
+                                    ),
+                                )
                             }
 
                             ConsentPendingStatus.UP_TO_DATE -> {
@@ -120,7 +118,7 @@ class TermViewModel
          */
         private fun submit() {
             if (!state.value.canSubmit) return
-            reduce { copy(isLoading = true) }
+            mvi.dispatch(TermMutation.OperationStarted)
             val submission =
                 ConsentSubmission(
                     items =
@@ -132,7 +130,7 @@ class TermViewModel
                             )
                         },
                 )
-            viewModelScope.launch {
+            mvi.launch {
                 submitConsent(submission)
                     .onSuccess {
                         checkPermissionConsent()
@@ -141,8 +139,8 @@ class TermViewModel
                             // 버전 불일치는 목록을 재조회한다. loadPending()의 isLoading 가드 때문에
                             // 재조회 전에 제출 로딩을 먼저 해제한다.
                             is ConsentVersionMismatchException -> {
-                                reduce { copy(isLoading = false) }
-                                sendEffect(TermEffect.ShowToast(error.message.orEmpty()))
+                                mvi.dispatch(TermMutation.OperationFinished)
+                                mvi.sendEffect(TermEffect.ShowToast(error.message.orEmpty()))
                                 loadPending()
                             }
 
@@ -151,8 +149,8 @@ class TermViewModel
                             is InvalidConsentItemException,
                             is ValidationException,
                             -> {
-                                reduce { copy(isLoading = false) }
-                                sendEffect(TermEffect.ShowToast(error.message.orEmpty()))
+                                mvi.dispatch(TermMutation.OperationFinished)
+                                mvi.sendEffect(TermEffect.ShowToast(error.message.orEmpty()))
                             }
 
                             // 그 외 전송·서버·알 수 없는 오류는 공통 처리로 위임한다.
@@ -176,8 +174,8 @@ class TermViewModel
             if (isGrantPerm) {
                 routeByProfile()
             } else {
-                reduce { copy(isLoading = false) }
-                sendEffect(TermEffect.DeniedPerm)
+                mvi.dispatch(TermMutation.OperationFinished)
+                mvi.sendEffect(TermEffect.DeniedPerm)
             }
         }
 
@@ -188,12 +186,12 @@ class TermViewModel
         private suspend fun routeByProfile() {
             checkUserProfile()
                 .onSuccess {
-                    reduce { copy(isLoading = false) }
-                    sendEffect(TermEffect.ExistProfile)
+                    mvi.dispatch(TermMutation.OperationFinished)
+                    mvi.sendEffect(TermEffect.ExistProfile)
                 }.onFailure { error ->
-                    reduce { copy(isLoading = false) }
+                    mvi.dispatch(TermMutation.OperationFinished)
                     when (error) {
-                        is UserNotFoundException -> sendEffect(TermEffect.NonExistProfile)
+                        is UserNotFoundException -> mvi.sendEffect(TermEffect.NonExistProfile)
                         else -> handleLoadFailure(error)
                     }
                 }
@@ -201,7 +199,7 @@ class TermViewModel
 
         // 아래 에러 처리 사항은 임시입니다. 공통 처리 기획자 문의 모든 ViewModel 일괄 수정 예정
         private suspend fun handleLoadFailure(error: Throwable) {
-            reduce { copy(isLoading = false) }
+            mvi.dispatch(TermMutation.OperationFinished)
             when (error) {
                 is NetworkUnavailableException -> {
                     GlobalErrorHandler.emit(GlobalAppEvent.ShowNetworkErrorAndExit)
@@ -218,25 +216,11 @@ class TermViewModel
         }
 
         private fun toggleAllAgree() {
-            val checked = !state.value.isAllChecked
-            reduce {
-                copy(terms = terms.map { it.copy(isChecked = checked) })
-            }
+            mvi.dispatch(TermMutation.AllAgreementToggled)
         }
 
         private fun toggleTerm(index: Int) {
-            reduce {
-                copy(
-                    terms =
-                        terms.mapIndexed { termIndex, term ->
-                            if (termIndex == index) {
-                                term.copy(isChecked = !term.isChecked)
-                            } else {
-                                term
-                            }
-                        },
-                )
-            }
+            mvi.dispatch(TermMutation.AgreementToggled(index))
         }
 
         /**
@@ -250,24 +234,98 @@ class TermViewModel
             if (!term.item.hasDocument) return
             if (state.value.isLoading) return
 
-            reduce { copy(isLoading = true) }
+            mvi.dispatch(TermMutation.OperationStarted)
 
-            viewModelScope.launch {
+            mvi.launch {
                 getConsentDocument(rawCode = term.item.rawCode, version = term.item.version)
                     .onSuccess { document ->
-                        reduce {
-                            copy(
-                                isLoading = false,
-                                visibleTermDetail =
-                                    TermDetailContent(
-                                        title = document.title,
-                                        content = document.contentMarkdown,
-                                    ),
-                            )
-                        }
+                        mvi.dispatch(
+                            TermMutation.DetailLoaded(document.title, document.contentMarkdown),
+                        )
                     }.onFailure { error ->
                         handleLoadFailure(error)
                     }
             }
         }
     }
+
+private sealed interface TermMutation {
+    data object DetailDismissed : TermMutation
+
+    data object OperationStarted : TermMutation
+
+    data class PendingLoaded(
+        val terms: List<TermConsentItem>,
+    ) : TermMutation
+
+    data object OperationFinished : TermMutation
+
+    data object AllAgreementToggled : TermMutation
+
+    data class AgreementToggled(
+        val index: Int,
+    ) : TermMutation
+
+    data class DetailLoaded(
+        val title: String,
+        val content: String,
+    ) : TermMutation
+}
+
+/** 사용자 입력과 비동기 결과를 화면 상태로만 계산한다. */
+private object TermReducer : MviReducer<TermState, TermMutation> {
+    override fun reduce(
+        state: TermState,
+        mutation: TermMutation,
+    ): TermState =
+        with(state) {
+            when (mutation) {
+                TermMutation.DetailDismissed -> {
+                    copy(visibleTermDetail = null)
+                }
+
+                TermMutation.OperationStarted -> {
+                    copy(isLoading = true)
+                }
+
+                is TermMutation.PendingLoaded -> {
+                    copy(
+                        terms = mutation.terms,
+                        isLoading = false,
+                    )
+                }
+
+                TermMutation.OperationFinished -> {
+                    copy(isLoading = false)
+                }
+
+                TermMutation.AllAgreementToggled -> {
+                    copy(terms = terms.map { it.copy(isChecked = !isAllChecked) })
+                }
+
+                is TermMutation.AgreementToggled -> {
+                    copy(
+                        terms =
+                            terms.mapIndexed { termIndex, term ->
+                                if (termIndex == mutation.index) {
+                                    term.copy(isChecked = !term.isChecked)
+                                } else {
+                                    term
+                                }
+                            },
+                    )
+                }
+
+                is TermMutation.DetailLoaded -> {
+                    copy(
+                        isLoading = false,
+                        visibleTermDetail =
+                            TermDetailContent(
+                                title = mutation.title,
+                                content = mutation.content,
+                            ),
+                    )
+                }
+            }
+        }
+}

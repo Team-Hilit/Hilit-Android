@@ -18,6 +18,7 @@ import com.dminus14.designsystem.component.text.withHilitTextHighlight
 import com.dminus14.designsystem.component.textfield.HilitAsyncTextField
 import com.dminus14.designsystem.component.textfield.HilitAsyncTextFieldType
 import com.dminus14.designsystem.component.textfield.HilitJDTextField
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.JobDescription as JdIntent
 
 private val SubtitleToTabSpacing = 34.dp
 private val TabToFieldSpacing = 16.dp
@@ -60,7 +61,11 @@ fun OnBoardingJobDescriptionStep(
                     HilitTabItem(text = "직접 입력하기"),
                 ),
             selectedIndex = tab.ordinal,
-            onTabSelected = { onIntent(OnBoardingInterviewIntent.JobDescriptionTabChange(it)) },
+            onTabSelected = {
+                onIntent(
+                    JdIntent.JobDescriptionTabChange(it),
+                )
+            },
             modifier = Modifier.padding(top = SubtitleToTabSpacing),
         )
 
@@ -93,7 +98,7 @@ private fun OnBoardingJobDescriptionField(
                 value = link,
                 onValueChange = {
                     onIntent(
-                        OnBoardingInterviewIntent.JobDescriptionLinkChange(it),
+                        JdIntent.JobDescriptionLinkChange(it),
                     )
                 },
                 type = link.toLinkFieldType(linkStatus),
@@ -101,7 +106,11 @@ private fun OnBoardingJobDescriptionField(
                 processingText = "분석 중",
                 subText = linkSubText,
                 descriptionText = "채용공고 없이도 계속 진행할 수 있어요",
-                onClearClick = { onIntent(OnBoardingInterviewIntent.JobDescriptionLinkChange("")) },
+                onClearClick = {
+                    onIntent(
+                        JdIntent.JobDescriptionLinkChange(""),
+                    )
+                },
                 modifier = modifier,
             )
         }
@@ -111,7 +120,7 @@ private fun OnBoardingJobDescriptionField(
                 value = text,
                 onValueChange = {
                     onIntent(
-                        OnBoardingInterviewIntent.JobDescriptionTextChange(it),
+                        JdIntent.JobDescriptionTextChange(it),
                     )
                 },
                 descriptionText = "채용공고 없이도 계속 진행할 수 있어요",

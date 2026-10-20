@@ -8,7 +8,9 @@ import com.dminus14.app.domain.model.GuestFeedbackAxisCode
 
 sealed interface GuestFeedbackRequestIntent : MviIntent {
     /** 화면 진입 시 sessionId 에 저장된 공유 링크 token 이 있는지 확인한다. */
-    data object Load : GuestFeedbackRequestIntent
+    data class Load(
+        val sessionId: Long,
+    ) : GuestFeedbackRequestIntent
 
     data class ToggleAxis(
         val axis: GuestFeedbackAxisCode,

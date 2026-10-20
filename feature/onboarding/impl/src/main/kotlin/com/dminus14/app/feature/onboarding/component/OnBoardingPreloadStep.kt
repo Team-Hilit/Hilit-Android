@@ -43,6 +43,7 @@ import com.dminus14.designsystem.component.icon.HilitIcon
 import com.dminus14.designsystem.component.icon.HilitIconAsset
 import com.dminus14.designsystem.theme.HilitTheme
 import kotlinx.coroutines.delay
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.Flow as FlowIntent
 
 private val TopBarPadding = 24.dp
 private val TitleToSubtitleSpacing = 8.dp
@@ -130,7 +131,7 @@ fun OnBoardingPreloadStep(
                         .clickable(
                             interactionSource = closeInteractionSource,
                             indication = null,
-                            onClick = { onIntent(OnBoardingInterviewIntent.ClickClose) },
+                            onClick = { onIntent(FlowIntent.ClickClose) },
                         ),
             )
         }

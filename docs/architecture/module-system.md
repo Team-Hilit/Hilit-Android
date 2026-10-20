@@ -46,7 +46,8 @@ Repository 구현을 직접 호출해 비즈니스 로직을 수행할 권한이
 Feature는 하나 이상의 화면과 해당 화면의 MVI 책임을 소유한다.
 
 - 화면 State와 Intent를 정의한다.
-- ViewModel에서 Intent를 처리하고 UseCase를 호출한다.
+- ViewModel에서 Intent를 받아 처리하며, 복잡한 화면은 같은 Feature의 책임별 Handler에 UseCase 호출과 작업 관리를 위임한다.
+- UI State 변경은 화면의 단일 순수 Reducer에서 계산한다. Handler와 Reducer는 별도 모듈이 아니라 Feature 내부 구현이다.
 - Client Error를 화면별 State 또는 Effect로 처리한다.
 - 화면 이동, Toast와 Snackbar 같은 일회성 Effect를 발행한다.
 - Navigation 3 route 또는 entry 계약을 상위 앱 계층에 제공한다.
@@ -120,7 +121,7 @@ API와 제품 런타임 로직에 의존하지 않는다. 상세 계약은 [`cat
 
 `core:common`은 여러 모듈이 공유하는 최소한의 플랫폼 독립 요소를 관리한다.
 
-- 공통 MVI Contract와 기반 ViewModel
+- 공통 MVI Contract, 기반 ViewModel, 순수 `MviReducer`와 ViewModel 수명의 `MviContext`
 - 공통 Result와 Error 모델
 - 공통 route 또는 key 모델
 - `GlobalAppEvent`와 `GlobalErrorHandler`
@@ -128,6 +129,10 @@ API와 제품 런타임 로직에 의존하지 않는다. 상세 계약은 [`cat
 
 Feature 전용 모델, 제품 로직과 서로 관련 없는 utility를 모으는 dumping ground로 사용하지
 않는다.
+
+화면별 Intent, Mutation, Reducer 구현과 Handler는 Feature가 소유한다. `core:common`에는
+여러 화면이 공유하는 상태·Effect 전달과 자식 작업 실행 계약만 두며, 제품 작업 분류나
+Handler 등록 프레임워크를 추가하지 않는다.
 
 ### 2.8 `core:resources`
 

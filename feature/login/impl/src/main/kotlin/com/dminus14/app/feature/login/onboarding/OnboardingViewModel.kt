@@ -1,19 +1,19 @@
 package com.dminus14.app.feature.login.onboarding
 
-import androidx.lifecycle.viewModelScope
 import com.dminus14.app.core.common.event.GlobalAppEvent
 import com.dminus14.app.core.common.event.GlobalErrorHandler
+import com.dminus14.app.core.common.mvi.MviReducer
 import com.dminus14.app.core.common.mvi.MviViewModel
 import com.dminus14.app.domain.exception.InvalidJobRoleException
 import com.dminus14.app.domain.exception.NameAlreadyTakenException
 import com.dminus14.app.domain.exception.NetworkUnavailableException
 import com.dminus14.app.domain.exception.ServerException
 import com.dminus14.app.domain.exception.ValidationException
+import com.dminus14.app.domain.model.Job
 import com.dminus14.app.domain.model.UserProfileUpdate
 import com.dminus14.app.domain.usecase.GetJobListUseCase
 import com.dminus14.app.domain.usecase.UpdateUserProfileUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -23,21 +23,17 @@ class OnboardingViewModel
         private val getJobList: GetJobListUseCase,
         private val updateUserProfile: UpdateUserProfileUseCase,
     ) : MviViewModel<OnboardingIntent, OnboardingState, OnboardingEffect>(OnboardingState()) {
+        private val mvi = createContext(OnboardingReducer)
+
         override fun onIntent(intent: OnboardingIntent) {
             when (intent) {
                 OnboardingIntent.Load -> {
-                    reduce {
-                        copy(
-                            experienceOptions = DefaultExperienceOptions,
-                            selectedExperienceIndex = 0,
-                            isContinueEnabled = resolveContinueEnabled(this),
-                        )
-                    }
+                    mvi.dispatch(OnboardingMutation.ExperienceOptionsInitialized)
                     loadJobs()
                 }
 
                 OnboardingIntent.CloseClick -> {
-                    sendEffect(OnboardingEffect.CloseRequested)
+                    mvi.sendEffect(OnboardingEffect.CloseRequested)
                 }
 
                 OnboardingIntent.ContinueClick -> {
@@ -49,36 +45,24 @@ class OnboardingViewModel
                 }
 
                 is OnboardingIntent.NameChange -> {
-                    reduce {
-                        copy(
-                            name = sanitizeNickname(intent.value),
-                            errorMessage = null,
-                        ).withContinueEnabled()
-                    }
+                    mvi.dispatch(OnboardingMutation.NameEdited(intent.value))
                 }
 
                 is OnboardingIntent.JobClick -> {
-                    reduce {
-                        copy(
-                            selectedJobIndex = intent.index,
-                            errorMessage = null,
-                        ).withContinueEnabled()
-                    }
+                    mvi.dispatch(OnboardingMutation.JobSelected(intent.index))
                 }
 
                 is OnboardingIntent.ExperienceChange -> {
-                    reduce {
-                        copy(selectedExperienceIndex = intent.index).withContinueEnabled()
-                    }
+                    mvi.dispatch(OnboardingMutation.ExperienceSelected(intent.index))
                 }
             }
         }
 
         private fun loadJobs() {
-            viewModelScope.launch {
+            mvi.launch {
                 getJobList()
                     .onSuccess { jobs ->
-                        reduce { copy(jobs = jobs).withContinueEnabled() }
+                        mvi.dispatch(OnboardingMutation.JobsLoaded(jobs))
                     }.onFailure { error ->
                         handleCommonError(error)
                     }
@@ -96,21 +80,15 @@ class OnboardingViewModel
 
             when (current.step) {
                 OnboardingStep.Naming -> {
-                    reduce {
-                        copy(step = OnboardingStep.JobSelection).withContinueEnabled()
-                    }
+                    mvi.dispatch(OnboardingMutation.StepChanged(OnboardingStep.JobSelection))
                 }
 
                 OnboardingStep.JobSelection -> {
-                    reduce {
-                        copy(step = OnboardingStep.ExperienceSelection).withContinueEnabled()
-                    }
+                    mvi.dispatch(OnboardingMutation.StepChanged(OnboardingStep.ExperienceSelection))
                 }
 
                 OnboardingStep.ExperienceSelection -> {
-                    reduce {
-                        copy(step = OnboardingStep.RegisterDone, isContinueEnabled = true)
-                    }
+                    mvi.dispatch(OnboardingMutation.RegistrationReviewEntered)
                 }
 
                 OnboardingStep.RegisterDone -> {
@@ -122,25 +100,19 @@ class OnboardingViewModel
         private fun onPreviousClick() {
             when (state.value.step) {
                 OnboardingStep.Naming -> {
-                    sendEffect(OnboardingEffect.CloseRequested)
+                    mvi.sendEffect(OnboardingEffect.CloseRequested)
                 }
 
                 OnboardingStep.JobSelection -> {
-                    reduce {
-                        copy(step = OnboardingStep.Naming).withContinueEnabled()
-                    }
+                    mvi.dispatch(OnboardingMutation.StepChanged(OnboardingStep.Naming))
                 }
 
                 OnboardingStep.ExperienceSelection -> {
-                    reduce {
-                        copy(step = OnboardingStep.JobSelection).withContinueEnabled()
-                    }
+                    mvi.dispatch(OnboardingMutation.StepChanged(OnboardingStep.JobSelection))
                 }
 
                 OnboardingStep.RegisterDone -> {
-                    reduce {
-                        copy(step = OnboardingStep.ExperienceSelection).withContinueEnabled()
-                    }
+                    mvi.dispatch(OnboardingMutation.StepChanged(OnboardingStep.ExperienceSelection))
                 }
             }
         }
@@ -151,8 +123,8 @@ class OnboardingViewModel
                 current.selectedJobIndex?.let { current.jobs.getOrNull(it) } ?: return
             val careerYears = current.selectedExperienceIndex
 
-            reduce { copy(isSubmitting = true, errorMessage = null) }
-            viewModelScope.launch {
+            mvi.dispatch(OnboardingMutation.SubmissionStarted)
+            mvi.launch {
                 updateUserProfile(
                     UserProfileUpdate(
                         name = current.name,
@@ -160,34 +132,20 @@ class OnboardingViewModel
                         careerYears = careerYears,
                     ),
                 ).onSuccess {
-                    reduce { copy(isSubmitting = false) }
-                    sendEffect(OnboardingEffect.Completed)
+                    mvi.dispatch(OnboardingMutation.SubmissionFinished)
+                    mvi.sendEffect(OnboardingEffect.Completed)
                 }.onFailure { error ->
                     when (error) {
                         is NameAlreadyTakenException -> {
-                            reduce {
-                                copy(
-                                    step = OnboardingStep.Naming,
-                                    isSubmitting = false,
-                                    errorMessage = error.message,
-                                ).withContinueEnabled()
-                            }
+                            mvi.dispatch(OnboardingMutation.NameRejected(error.message))
                         }
 
                         is InvalidJobRoleException -> {
-                            reduce {
-                                copy(
-                                    step = OnboardingStep.JobSelection,
-                                    isSubmitting = false,
-                                    errorMessage = error.message,
-                                ).withContinueEnabled()
-                            }
+                            mvi.dispatch(OnboardingMutation.JobRejected(error.message))
                         }
 
                         is ValidationException -> {
-                            reduce {
-                                copy(isSubmitting = false, errorMessage = error.message)
-                            }
+                            mvi.dispatch(OnboardingMutation.ProfileRejected(error.message))
                         }
 
                         else -> {
@@ -200,7 +158,7 @@ class OnboardingViewModel
 
         // 아래 에러 처리 사항은 임시입니다. 공통 처리 기획자 문의 모든 ViewModel 일괄 수정 예정
         private suspend fun handleCommonError(error: Throwable) {
-            reduce { copy(isSubmitting = false) }
+            mvi.dispatch(OnboardingMutation.SubmissionFinished)
             when (error) {
                 is NetworkUnavailableException -> {
                     GlobalErrorHandler.emit(GlobalAppEvent.ShowNetworkErrorAndExit)
@@ -215,43 +173,160 @@ class OnboardingViewModel
                 }
             }
         }
+    }
 
-        private fun OnboardingState.withContinueEnabled(): OnboardingState =
-            copy(isContinueEnabled = resolveContinueEnabled(this))
+private sealed interface OnboardingMutation {
+    data object ExperienceOptionsInitialized : OnboardingMutation
 
-        private fun resolveContinueEnabled(state: OnboardingState): Boolean =
-            when (state.step) {
-                OnboardingStep.Naming -> {
-                    isValidNickname(state.name)
+    data class NameEdited(
+        val value: String,
+    ) : OnboardingMutation
+
+    data class JobSelected(
+        val index: Int,
+    ) : OnboardingMutation
+
+    data class ExperienceSelected(
+        val index: Int,
+    ) : OnboardingMutation
+
+    data class JobsLoaded(
+        val jobs: List<Job>,
+    ) : OnboardingMutation
+
+    data class StepChanged(
+        val step: OnboardingStep,
+    ) : OnboardingMutation
+
+    data object RegistrationReviewEntered : OnboardingMutation
+
+    data object SubmissionStarted : OnboardingMutation
+
+    data object SubmissionFinished : OnboardingMutation
+
+    data class NameRejected(
+        val message: String?,
+    ) : OnboardingMutation
+
+    data class JobRejected(
+        val message: String?,
+    ) : OnboardingMutation
+
+    data class ProfileRejected(
+        val message: String?,
+    ) : OnboardingMutation
+}
+
+/** 사용자 입력과 비동기 결과를 화면 상태로만 계산한다. */
+private object OnboardingReducer : MviReducer<OnboardingState, OnboardingMutation> {
+    override fun reduce(
+        state: OnboardingState,
+        mutation: OnboardingMutation,
+    ): OnboardingState =
+        with(state) {
+            when (mutation) {
+                OnboardingMutation.ExperienceOptionsInitialized -> {
+                    copy(
+                        experienceOptions = DefaultExperienceOptions,
+                        selectedExperienceIndex = 0,
+                        isContinueEnabled = resolveContinueEnabled(this),
+                    )
                 }
 
-                OnboardingStep.JobSelection -> {
-                    state.selectedJobIndex != null &&
-                        state.selectedJobIndex in state.jobs.indices
+                is OnboardingMutation.NameEdited -> {
+                    copy(
+                        name = sanitizeNickname(mutation.value),
+                        errorMessage = null,
+                    ).withContinueEnabled()
                 }
 
-                OnboardingStep.ExperienceSelection -> {
-                    state.selectedExperienceIndex in state.experienceOptions.indices
+                is OnboardingMutation.JobSelected -> {
+                    copy(
+                        selectedJobIndex = mutation.index,
+                        errorMessage = null,
+                    ).withContinueEnabled()
                 }
 
-                OnboardingStep.RegisterDone -> {
-                    true
+                is OnboardingMutation.ExperienceSelected -> {
+                    copy(selectedExperienceIndex = mutation.index).withContinueEnabled()
+                }
+
+                is OnboardingMutation.JobsLoaded -> {
+                    copy(jobs = mutation.jobs).withContinueEnabled()
+                }
+
+                is OnboardingMutation.StepChanged -> {
+                    copy(step = mutation.step).withContinueEnabled()
+                }
+
+                OnboardingMutation.RegistrationReviewEntered -> {
+                    copy(step = OnboardingStep.RegisterDone, isContinueEnabled = true)
+                }
+
+                OnboardingMutation.SubmissionStarted -> {
+                    copy(isSubmitting = true, errorMessage = null)
+                }
+
+                OnboardingMutation.SubmissionFinished -> {
+                    copy(isSubmitting = false)
+                }
+
+                is OnboardingMutation.NameRejected -> {
+                    copy(
+                        step = OnboardingStep.Naming,
+                        isSubmitting = false,
+                        errorMessage = mutation.message,
+                    ).withContinueEnabled()
+                }
+
+                is OnboardingMutation.JobRejected -> {
+                    copy(
+                        step = OnboardingStep.JobSelection,
+                        isSubmitting = false,
+                        errorMessage = mutation.message,
+                    ).withContinueEnabled()
+                }
+
+                is OnboardingMutation.ProfileRejected -> {
+                    copy(isSubmitting = false, errorMessage = mutation.message)
                 }
             }
-
-        private fun sanitizeNickname(input: String): String =
-            input
-                .filter { char -> NICKNAME_ALLOWED_CHAR_REGEX.matches(char.toString()) }
-                .take(NICKNAME_MAX_LENGTH)
-
-        private fun isValidNickname(name: String): Boolean =
-            sanitizeNickname(name) == name && name.isNotBlank()
-
-        private companion object {
-            private const val NICKNAME_MAX_LENGTH = 5
-
-            // ㆍ(U+318D, Hangul Letter Araea): 천지인 키보드의 "천" 점 입력.
-            // 조합이 완성되기 전 IME가 원시 문자를 그대로 흘려보내는 경우가 있어 허용한다.
-            private val NICKNAME_ALLOWED_CHAR_REGEX = Regex("[a-zA-Z가-힣ㄱ-ㅎㅏ-ㅣㆍ]")
         }
-    }
+
+    private fun OnboardingState.withContinueEnabled(): OnboardingState =
+        copy(isContinueEnabled = resolveContinueEnabled(this))
+
+    private fun resolveContinueEnabled(state: OnboardingState): Boolean =
+        when (state.step) {
+            OnboardingStep.Naming -> {
+                isValidNickname(state.name)
+            }
+
+            OnboardingStep.JobSelection -> {
+                state.selectedJobIndex != null &&
+                    state.selectedJobIndex in state.jobs.indices
+            }
+
+            OnboardingStep.ExperienceSelection -> {
+                state.selectedExperienceIndex in state.experienceOptions.indices
+            }
+
+            OnboardingStep.RegisterDone -> {
+                true
+            }
+        }
+
+    private fun sanitizeNickname(input: String): String =
+        input
+            .filter { char -> NICKNAME_ALLOWED_CHAR_REGEX.matches(char.toString()) }
+            .take(NICKNAME_MAX_LENGTH)
+
+    private fun isValidNickname(name: String): Boolean =
+        sanitizeNickname(name) == name && name.isNotBlank()
+
+    private const val NICKNAME_MAX_LENGTH = 5
+
+    // ㆍ(U+318D, Hangul Letter Araea): 천지인 키보드의 "천" 점 입력.
+    // 조합이 완성되기 전 IME가 원시 문자를 그대로 흘려보내는 경우가 있어 허용한다.
+    private val NICKNAME_ALLOWED_CHAR_REGEX = Regex("[a-zA-Z가-힣ㄱ-ㅎㅏ-ㅣㆍ]")
+}

@@ -27,6 +27,7 @@ import com.dminus14.app.domain.model.UploadInterviewVideoCommand
 import com.dminus14.app.domain.repository.InterviewRepository
 import com.dminus14.app.domain.usecase.GetInterviewReportUseCase
 import com.dminus14.app.feature.interviewreport.player.InterviewReportPlayerState.Phase
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -58,12 +59,12 @@ class InterviewReportPlayerViewModelTest {
     @Test
     fun `sessionId 가 바인딩되지 않았으면 Loading 이 아니라 Failed 로 전이한다`() =
         runTest {
-            // bindSessionId 를 호출하지 않아 sessionId 가 기본값(0L)인 상태. 초기 phase 가
+            // 유효하지 않은 sessionId(0L)로 진입한 상태. 초기 phase 가
             // Loading 이라 load() 가 조용히 리턴하면, 닫기 아이콘이 Ready(PlayerReady) 안에만
             // 있어서 사용자가 시스템 백 외에는 빠져나갈 수단이 없는 화면에 갇힌다.
             val viewModel = viewModel(FakeInterviewRepository(readyReport()))
 
-            viewModel.onIntent(InterviewReportPlayerIntent.Load)
+            viewModel.onIntent(InterviewReportPlayerIntent.Load(0L))
             advanceUntilIdle()
 
             assertEquals(Phase.Failed, viewModel.state.value.phase)
@@ -74,8 +75,7 @@ class InterviewReportPlayerViewModelTest {
         runTest {
             val viewModel = viewModel(ThrowingInterviewRepository())
 
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportPlayerIntent.Load)
+            viewModel.onIntent(InterviewReportPlayerIntent.Load(1L))
             advanceUntilIdle()
 
             assertEquals(Phase.Failed, viewModel.state.value.phase)
@@ -86,8 +86,7 @@ class InterviewReportPlayerViewModelTest {
         runTest {
             val viewModel = viewModel(FakeInterviewRepository(readyReport()))
 
-            viewModel.bindSessionId(1L)
-            viewModel.onIntent(InterviewReportPlayerIntent.Load)
+            viewModel.onIntent(InterviewReportPlayerIntent.Load(1L))
             advanceUntilIdle()
 
             val phase = viewModel.state.value.phase
@@ -122,6 +121,27 @@ class InterviewReportPlayerViewModelTest {
             viewModel.onIntent(InterviewReportPlayerIntent.ToggleTranscript)
             assertEquals(false, viewModel.state.value.transcriptVisible)
         }
+
+    @Test
+    fun `리포트 응답이 늦게 도착해도 로딩 중 켠 대본 표시를 유지한다`() {
+        runTest {
+            val response = CompletableDeferred<InterviewReport>()
+            val repository =
+                FakeInterviewRepository(
+                    response = readyReport(),
+                    awaitResponse = { response.await() },
+                )
+            val viewModel = viewModel(repository)
+            viewModel.onIntent(InterviewReportPlayerIntent.Load(1L))
+            viewModel.onIntent(InterviewReportPlayerIntent.ToggleTranscript)
+
+            response.complete(readyReport())
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.phase is Phase.Ready)
+            assertTrue(viewModel.state.value.transcriptVisible)
+        }
+    }
 
     private fun readyReport(): InterviewReport =
         InterviewReport(
@@ -191,8 +211,10 @@ class InterviewReportPlayerViewModelTest {
 
 private class FakeInterviewRepository(
     private val response: InterviewReport,
+    private val awaitResponse: (suspend () -> InterviewReport)? = null,
 ) : InterviewRepository {
-    override suspend fun getReport(sessionId: Long): InterviewReport = response
+    override suspend fun getReport(sessionId: Long): InterviewReport =
+        awaitResponse?.invoke() ?: response
 
     override suspend fun validateJdUrl(jdUrl: String): JdValidationResult = error("사용하지 않음")
 

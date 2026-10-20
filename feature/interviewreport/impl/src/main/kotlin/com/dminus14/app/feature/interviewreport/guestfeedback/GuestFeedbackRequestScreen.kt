@@ -29,8 +29,7 @@ fun GuestFeedbackRequestScreen(
     val clipboardManager = LocalClipboardManager.current
 
     LaunchedEffect(sessionId) {
-        viewModel.bindSessionId(sessionId)
-        viewModel.onIntent(GuestFeedbackRequestIntent.Load)
+        viewModel.onIntent(GuestFeedbackRequestIntent.Load(sessionId))
     }
     LaunchedEffect(Unit) {
         viewModel.effect.collect { effect ->

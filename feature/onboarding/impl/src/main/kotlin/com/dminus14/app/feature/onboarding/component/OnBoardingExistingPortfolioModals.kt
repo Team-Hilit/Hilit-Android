@@ -10,6 +10,7 @@ import com.dminus14.designsystem.component.modal.HilitBookIllustration
 import com.dminus14.designsystem.component.modal.HilitModal
 import com.dminus14.designsystem.component.modal.HilitModalType
 import kotlinx.coroutines.delay
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewIntent.Portfolio as PortfolioIntent
 
 internal const val AUTO_DISMISS_NOTICE_MS = 3_000L
 
@@ -49,7 +50,11 @@ internal fun OnBoardingExistingPortfolioConfirmModal(
         buttons = {
             HilitFixedBottomButton(
                 text = "확인",
-                onClick = { onIntent(OnBoardingInterviewIntent.ClickExistingPortfolioConfirm) },
+                onClick = {
+                    onIntent(
+                        PortfolioIntent.ClickExistingPortfolioConfirm,
+                    )
+                },
             )
         },
     )
@@ -67,7 +72,7 @@ internal fun OnBoardingUseExistingPortfolioNotice(
 ) {
     LaunchedEffect(Unit) {
         delay(AUTO_DISMISS_NOTICE_MS)
-        onIntent(OnBoardingInterviewIntent.AutoDismissNoticeTimedOut)
+        onIntent(PortfolioIntent.AutoDismissNoticeTimedOut)
     }
 
     HilitModal(
@@ -77,7 +82,7 @@ internal fun OnBoardingUseExistingPortfolioNotice(
             "이번 달 남은 삭제 기회 ${remainingDeleteCount}번이라\n" +
                 "새로운 포트폴리오 업로드가 불가능해요.",
         dismissible = true,
-        onDismiss = { onIntent(OnBoardingInterviewIntent.ClickAutoDismissNotice) },
+        onDismiss = { onIntent(PortfolioIntent.ClickAutoDismissNotice) },
         buttons = {},
     )
 }
