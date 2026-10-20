@@ -1,7 +1,11 @@
-package com.dminus14.app.feature.onboarding
+package com.dminus14.app.feature.onboarding.handler
 
 import com.dminus14.app.core.common.mvi.MviContext
 import com.dminus14.app.domain.usecase.CheckUserProfileUseCase
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewEffect
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewState
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewStep
+import com.dminus14.app.feature.onboarding.OnBoardingMutation
 import com.dminus14.app.feature.onboarding.OnBoardingPolicy.FREETEXT_MIN_LENGTH
 import kotlinx.coroutines.CancellationException
 import com.dminus14.app.feature.onboarding.OnBoardingMutation.Flow as FlowMutation

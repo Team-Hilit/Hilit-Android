@@ -11,6 +11,10 @@ import com.dminus14.app.domain.usecase.MakeInterviewSessionUseCase
 import com.dminus14.app.domain.usecase.SaveInterviewSessionProgressUseCase
 import com.dminus14.app.domain.usecase.UploadPortfolioUseCase
 import com.dminus14.app.domain.usecase.ValidateJdUrlUseCase
+import com.dminus14.app.feature.onboarding.handler.OnBoardingFlowHandler
+import com.dminus14.app.feature.onboarding.handler.OnBoardingJobDescriptionHandler
+import com.dminus14.app.feature.onboarding.handler.OnBoardingPortfolioHandler
+import com.dminus14.app.feature.onboarding.handler.OnBoardingSessionPreparationHandler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher

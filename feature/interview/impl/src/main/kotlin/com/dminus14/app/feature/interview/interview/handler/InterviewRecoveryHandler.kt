@@ -1,9 +1,17 @@
-package com.dminus14.app.feature.interview.interview
+package com.dminus14.app.feature.interview.interview.handler
 
 import com.dminus14.app.core.common.modal.GlobalModalResult
 import com.dminus14.app.core.common.mvi.MviContext
 import com.dminus14.app.domain.usecase.CheckpointInterviewProgressUseCase
 import com.dminus14.app.feature.interview.api.InterviewErrorType
+import com.dminus14.app.feature.interview.interview.InterviewEffect
+import com.dminus14.app.feature.interview.interview.InterviewFatalExitPrompt
+import com.dminus14.app.feature.interview.interview.InterviewIntent
+import com.dminus14.app.feature.interview.interview.InterviewMutation
+import com.dminus14.app.feature.interview.interview.InterviewRecoveryStore
+import com.dminus14.app.feature.interview.interview.InterviewScreenState
+import com.dminus14.app.feature.interview.interview.InterviewState
+import com.dminus14.app.feature.interview.interview.InterviewWorkflow
 import kotlinx.coroutines.Job
 
 /** 앱 복귀와 네트워크 중단 체크포인트, 복구 및 종료 안내를 관리한다. */

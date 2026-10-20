@@ -13,6 +13,8 @@ import com.dminus14.app.domain.usecase.GetInterviewResumeUseCase
 import com.dminus14.app.domain.usecase.RetainInterviewSessionForCleanupUseCase
 import com.dminus14.app.domain.usecase.SavePendingInterviewAnswerUseCase
 import com.dminus14.app.domain.usecase.SubmitAnswerUseCase
+import com.dminus14.app.feature.interview.error.handler.InterviewErrorAbortHandler
+import com.dminus14.app.feature.interview.error.handler.InterviewErrorResumeHandler
 import com.dminus14.app.feature.interview.interview.InterviewRecoveryStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException

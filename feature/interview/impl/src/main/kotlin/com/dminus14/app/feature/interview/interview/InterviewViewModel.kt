@@ -17,6 +17,12 @@ import com.dminus14.app.domain.usecase.SaveInterviewWrapUpRangeUseCase
 import com.dminus14.app.domain.usecase.SavePendingInterviewAnswerUseCase
 import com.dminus14.app.domain.usecase.StartInterviewTimerUseCase
 import com.dminus14.app.domain.usecase.SubmitAnswerUseCase
+import com.dminus14.app.feature.interview.interview.handler.InterviewFinalizationHandler
+import com.dminus14.app.feature.interview.interview.handler.InterviewPreparationHandler
+import com.dminus14.app.feature.interview.interview.handler.InterviewRecoveryHandler
+import com.dminus14.app.feature.interview.interview.handler.InterviewSubmissionHandler
+import com.dminus14.app.feature.interview.interview.handler.InterviewTimingHandler
+import com.dminus14.app.feature.interview.interview.handler.InterviewTurnHandler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 

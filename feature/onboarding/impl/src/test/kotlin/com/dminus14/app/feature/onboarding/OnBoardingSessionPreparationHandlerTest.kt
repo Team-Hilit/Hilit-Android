@@ -7,6 +7,7 @@ import com.dminus14.app.domain.model.InterviewSessionStatusType
 import com.dminus14.app.domain.usecase.GetInterviewSessionUseCase
 import com.dminus14.app.domain.usecase.MakeInterviewSessionUseCase
 import com.dminus14.app.domain.usecase.SaveInterviewSessionProgressUseCase
+import com.dminus14.app.feature.onboarding.handler.OnBoardingSessionPreparationHandler
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk

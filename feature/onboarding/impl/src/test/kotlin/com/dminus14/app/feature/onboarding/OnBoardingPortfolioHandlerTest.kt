@@ -10,6 +10,7 @@ import com.dminus14.app.domain.usecase.DeletePortfolioUseCase
 import com.dminus14.app.domain.usecase.GetPortfolioOverviewUseCase
 import com.dminus14.app.domain.usecase.GetPortfolioStatusUseCase
 import com.dminus14.app.domain.usecase.UploadPortfolioUseCase
+import com.dminus14.app.feature.onboarding.handler.OnBoardingPortfolioHandler
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk

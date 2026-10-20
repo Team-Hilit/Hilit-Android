@@ -1,4 +1,4 @@
-package com.dminus14.app.feature.onboarding
+package com.dminus14.app.feature.onboarding.handler
 
 import com.dminus14.app.core.common.event.GlobalAppEvent
 import com.dminus14.app.core.common.event.GlobalErrorHandler
@@ -8,6 +8,12 @@ import com.dminus14.app.domain.exception.JdValidationLimitExceededException
 import com.dminus14.app.domain.exception.NetworkUnavailableException
 import com.dminus14.app.domain.exception.ServerException
 import com.dminus14.app.domain.usecase.ValidateJdUrlUseCase
+import com.dminus14.app.feature.onboarding.JdLinkStatus
+import com.dminus14.app.feature.onboarding.JobDescriptionTab
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewEffect
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewState
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewStep
+import com.dminus14.app.feature.onboarding.OnBoardingMutation
 import com.dminus14.app.feature.onboarding.OnBoardingPolicy.HTTPS_SCHEME
 import com.dminus14.app.feature.onboarding.OnBoardingPolicy.JD_TEXT_MIN_LENGTH
 import com.dminus14.app.feature.onboarding.OnBoardingPolicy.MESSAGE_LINK_INVALID

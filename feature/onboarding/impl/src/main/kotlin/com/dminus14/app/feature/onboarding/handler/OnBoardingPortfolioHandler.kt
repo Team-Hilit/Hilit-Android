@@ -1,4 +1,4 @@
-package com.dminus14.app.feature.onboarding
+package com.dminus14.app.feature.onboarding.handler
 
 import android.content.Context
 import android.net.Uri
@@ -11,6 +11,11 @@ import com.dminus14.app.domain.usecase.DeletePortfolioUseCase
 import com.dminus14.app.domain.usecase.GetPortfolioOverviewUseCase
 import com.dminus14.app.domain.usecase.GetPortfolioStatusUseCase
 import com.dminus14.app.domain.usecase.UploadPortfolioUseCase
+import com.dminus14.app.feature.onboarding.ExistingPortfolioModalPhase
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewEffect
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewState
+import com.dminus14.app.feature.onboarding.OnBoardingInterviewStep
+import com.dminus14.app.feature.onboarding.OnBoardingMutation
 import com.dminus14.app.feature.onboarding.OnBoardingPolicy.MAX_POLL_ATTEMPTS
 import com.dminus14.app.feature.onboarding.OnBoardingPolicy.MESSAGE_PDF_CORRUPT
 import com.dminus14.app.feature.onboarding.OnBoardingPolicy.MESSAGE_PDF_PAGE

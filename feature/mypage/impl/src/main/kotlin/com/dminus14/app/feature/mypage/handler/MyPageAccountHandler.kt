@@ -1,8 +1,12 @@
-package com.dminus14.app.feature.mypage
+package com.dminus14.app.feature.mypage.handler
 
 import com.dminus14.app.core.common.mvi.MviContext
 import com.dminus14.app.domain.usecase.LogoutUseCase
 import com.dminus14.app.domain.usecase.WithdrawUserUseCase
+import com.dminus14.app.feature.mypage.MyPageEffect
+import com.dminus14.app.feature.mypage.MyPageModalType
+import com.dminus14.app.feature.mypage.MyPageMutation
+import com.dminus14.app.feature.mypage.MyPageState
 
 /** 로그아웃과 탈퇴 요청을 처리한다. */
 internal class MyPageAccountHandler(

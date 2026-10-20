@@ -1,4 +1,4 @@
-package com.dminus14.app.feature.interview.interview
+package com.dminus14.app.feature.interview.interview.handler
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -12,6 +12,8 @@ import com.dminus14.app.domain.model.InterviewUploadNetworkPolicy
 import com.dminus14.app.domain.repository.InterviewWorkController
 import com.dminus14.app.domain.usecase.PrepareInterviewUploadUseCase
 import com.dminus14.app.feature.interview.device.InterviewStorageChecker
+import com.dminus14.app.feature.interview.interview.InterviewEffect
+import com.dminus14.app.feature.interview.interview.InterviewIntent
 import com.dminus14.app.feature.interview.media.InterviewAudioPlaybackRequest
 import com.dminus14.app.feature.interview.media.InterviewAudioPlayer
 import com.dminus14.app.feature.interview.media.InterviewMediaSessionManager

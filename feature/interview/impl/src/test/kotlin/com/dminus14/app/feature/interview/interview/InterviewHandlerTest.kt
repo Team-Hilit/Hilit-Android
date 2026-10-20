@@ -13,6 +13,9 @@ import com.dminus14.app.domain.usecase.SavePendingInterviewAnswerUseCase
 import com.dminus14.app.domain.usecase.StartInterviewTimerUseCase
 import com.dminus14.app.domain.usecase.SubmitAnswerUseCase
 import com.dminus14.app.feature.interview.InterviewConstants
+import com.dminus14.app.feature.interview.interview.handler.InterviewFinalizationHandler
+import com.dminus14.app.feature.interview.interview.handler.InterviewSubmissionHandler
+import com.dminus14.app.feature.interview.interview.handler.InterviewTimingHandler
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
