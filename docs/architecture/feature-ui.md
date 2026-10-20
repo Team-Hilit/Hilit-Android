@@ -74,6 +74,38 @@ interview/
 Handler와 Reducer는 해당 화면 내부 구현이다. 줄 수를 기준으로 기존 함수를 그대로 다른
 거대 클래스에 옮기거나, 모든 화면에 같은 수의 Handler를 강제하지 않는다.
 
+### 2.1 구성 요소별 디렉터리 분리
+
+같은 역할의 구현 파일이 여러 개 생겨 화면 디렉터리를 탐색하기 어려워지면 `handler/` 같은
+하위 디렉터리로 묶을 수 있다. 파일이 2개 이상이라는 사실은 분리를 검토하는 신호이며,
+자동으로 분리를 강제하는 기준은 아니다. 화면의 전체 파일 수와 탐색 편의성을 함께 판단한다.
+
+- 디렉터리는 소유 화면 아래에 둔다. 예를 들어 `interview/handler/`와 `error/handler/`로
+  구분하고, Feature 전체 화면의 Handler를 하나의 `handler/`에 모으지 않는다.
+- Handler가 많은 복잡한 화면부터 적용하고, 파일이 적은 화면은 기존의 평평한 구조를 유지한다.
+- Reducer와 Mutation 등 다른 구성 요소에도 같은 기준을 적용한다. 단일 파일을 담기 위해
+  역할별 디렉터리를 만들거나 모든 화면에 동일한 디렉터리 구조를 강제하지 않는다.
+- 디렉터리를 나누어도 화면의 단일 State·Reducer·MviContext, Handler 사이 직접 참조 금지와
+  ViewModel의 흐름 조정 책임은 유지한다. 디렉터리 분리를 별도 모듈이나 상태 소유권 분리로
+  확대하지 않는다.
+
+Handler가 많은 화면의 배치 예시는 다음과 같다.
+
+```text
+interview/
+├── InterviewContract.kt
+├── InterviewViewModel.kt
+├── InterviewMutation.kt
+├── InterviewReducer.kt
+├── InterviewWorkflow.kt
+├── InterviewScreen.kt
+└── handler/
+    ├── InterviewPreparationHandler.kt
+    ├── InterviewTurnHandler.kt
+    ├── InterviewSubmissionHandler.kt
+    └── InterviewRecoveryHandler.kt
+```
+
 ## 3. Contract
 
 ### 3.1 Intent
