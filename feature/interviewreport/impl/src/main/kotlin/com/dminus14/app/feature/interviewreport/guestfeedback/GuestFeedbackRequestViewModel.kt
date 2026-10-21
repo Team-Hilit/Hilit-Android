@@ -25,6 +25,8 @@ import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 
 private const val COPIED_NOTICE_DURATION_MS = 2000L
+private const val AXES_LOCKED_MESSAGE = "링크 생성 후 조작이 불가능합니다."
+private const val LINK_COPIED_MESSAGE = "피드백 링크가 복사되었습니다."
 
 @HiltViewModel
 @Suppress("TooManyFunctions")
@@ -54,7 +56,7 @@ class GuestFeedbackRequestViewModel
                 }
 
                 is GuestFeedbackRequestIntent.ToggleAxis -> {
-                    context.dispatch(GuestFeedbackRequestMutation.AxisToggled(intent.axis))
+                    toggleAxis(intent.axis)
                 }
 
                 GuestFeedbackRequestIntent.ClickClose -> {
@@ -71,14 +73,6 @@ class GuestFeedbackRequestViewModel
 
                 GuestFeedbackRequestIntent.ClickShareMessage -> {
                     shareMessage()
-                }
-
-                GuestFeedbackRequestIntent.DismissShareLinkModal -> {
-                    context.dispatch(GuestFeedbackRequestMutation.ShareModalDismissed)
-                }
-
-                GuestFeedbackRequestIntent.ClickEndShare -> {
-                    endShare()
                 }
             }
         }
@@ -98,20 +92,37 @@ class GuestFeedbackRequestViewModel
                 }
         }
 
+        /** 생성 이후에는 바꿔도 링크에 반영되지 않으므로 막고 이유를 알린다(#219). */
+        private fun toggleAxis(axis: GuestFeedbackAxisCode) {
+            if (state.value.axesLocked) {
+                context.sendEffect(GuestFeedbackRequestEffect.ShowToast(AXES_LOCKED_MESSAGE))
+                return
+            }
+            context.dispatch(GuestFeedbackRequestMutation.AxisToggled(axis))
+        }
+
         private fun onClickSubmit() {
             val current = state.value
             when {
+                // 기획 범위 밖(#219). 서버에는 활성 링크가 있는데 이 기기에 기록이 없어 복사할
+                // 링크를 꺼낼 수 없는 상태다(다른 기기에서 생성했거나 앱 데이터 삭제). 복사도
+                // 재생성도 불가능하므로 기존 종료 경로를 그대로 유지한다.
                 current.endOnlyShare -> endShare()
-                current.hasActiveShare -> openSavedShare()
+
+                current.hasActiveShare -> copySavedShare()
+
                 else -> createShare()
             }
         }
 
         /**
-         * 이미 활성 링크가 있을 때의 하단 버튼 동작. 서버에 다시 만들지 않고 기기에 저장된 링크로
-         * 첫 생성과 같은 모달을 띄운다. 기록이 사라진 경우에만 새로 생성한다.
+         * 이미 활성 링크가 있을 때의 하단 버튼 동작(#219).
+         *
+         * 서버에 다시 만들지 않고 기기에 저장된 링크로 멘트를 조립해 바로 복사한다. 모달을 다시
+         * 띄우지 않으므로 사용자는 화면에 머문 채 복사만 반복할 수 있다. 기록이 사라진 경우에만
+         * 새로 생성한다.
          */
-        private fun openSavedShare() {
+        private fun copySavedShare() {
             if (state.value.submitting) return
             loadJob?.cancel()
             context.dispatch(GuestFeedbackRequestMutation.SubmissionStarted)
@@ -123,7 +134,8 @@ class GuestFeedbackRequestViewModel
                             context.dispatch(GuestFeedbackRequestMutation.SavedShareMissing)
                             createShare()
                         } else {
-                            context.dispatch(GuestFeedbackRequestMutation.ShareReady(saved))
+                            context.dispatch(GuestFeedbackRequestMutation.SavedShareRestored(saved))
+                            copyShareMessage(saved.axes.toSet(), saved.link)
                         }
                     }.onFailure { error ->
                         handleCommonError(error)
@@ -234,17 +246,31 @@ class GuestFeedbackRequestViewModel
         }
 
         /**
-         * 복사 후에는 안내를 2초 보여주고 모달만 닫는다. 화면을 벗어나지 않으므로 사용자가
-         * 바로 다시 복사하거나 공유할 수 있다.
+         * 모달의 복사하기. 토스트로 알리고 2초 뒤 모달을 닫는다(#219). 화면은 벗어나지 않으므로
+         * 사용자가 하단 버튼으로 바로 다시 복사할 수 있다.
          */
         private fun copyMessage() {
-            val message = shareMessageOrNull() ?: return
-            context.sendEffect(GuestFeedbackRequestEffect.CopyToClipboard(message))
-            context.dispatch(GuestFeedbackRequestMutation.MessageCopied)
+            val current = state.value
+            val link = current.shareLink ?: return
+            copyShareMessage(current.messageAxes, link)
             context.launch {
                 delay(COPIED_NOTICE_DURATION_MS)
-                context.dispatch(GuestFeedbackRequestMutation.CopiedNoticeFinished)
+                context.dispatch(GuestFeedbackRequestMutation.ShareModalDismissed)
             }
+        }
+
+        /** 모달의 복사하기와 하단 버튼이 똑같은 텍스트·안내를 쓰도록 한 곳에서만 처리한다. */
+        private fun copyShareMessage(
+            axes: Set<GuestFeedbackAxisCode>,
+            link: String?,
+        ) {
+            val resolved = link ?: return
+            context.sendEffect(
+                GuestFeedbackRequestEffect.CopyToClipboard(
+                    buildGuestFeedbackShareMessage(axes, resolved),
+                ),
+            )
+            context.sendEffect(GuestFeedbackRequestEffect.ShowToast(LINK_COPIED_MESSAGE))
         }
 
         /**
@@ -252,15 +278,13 @@ class GuestFeedbackRequestViewModel
          * 리포트로 자동 복귀시키지 않는다.
          */
         private fun shareMessage() {
-            val message = shareMessageOrNull() ?: return
-            context.sendEffect(GuestFeedbackRequestEffect.ShareText(message))
-        }
-
-        /** 복사와 공유가 똑같은 텍스트를 쓰도록 한 곳에서만 조립한다. */
-        private fun shareMessageOrNull(): String? {
             val current = state.value
-            val link = current.shareLink ?: return null
-            return buildGuestFeedbackShareMessage(current.messageAxes, link)
+            val link = current.shareLink ?: return
+            context.sendEffect(
+                GuestFeedbackRequestEffect.ShareText(
+                    buildGuestFeedbackShareMessage(current.messageAxes, link),
+                ),
+            )
         }
     }
 
@@ -293,9 +317,10 @@ private sealed interface GuestFeedbackRequestMutation {
 
     data object ShareEnded : GuestFeedbackRequestMutation
 
-    data object MessageCopied : GuestFeedbackRequestMutation
-
-    data object CopiedNoticeFinished : GuestFeedbackRequestMutation
+    /** 하단 버튼 복사 경로. 모달을 띄우지 않고 저장 기록만 최신으로 맞춘다(#219). */
+    data class SavedShareRestored(
+        val saved: SavedFeedbackShare,
+    ) : GuestFeedbackRequestMutation
 }
 
 private object GuestFeedbackRequestReducer :
@@ -353,12 +378,8 @@ private object GuestFeedbackRequestReducer :
                 )
             }
 
-            GuestFeedbackRequestMutation.MessageCopied -> {
-                state.copy(messageCopied = true)
-            }
-
-            GuestFeedbackRequestMutation.CopiedNoticeFinished -> {
-                state.copy(messageCopied = false, shareLink = null)
+            is GuestFeedbackRequestMutation.SavedShareRestored -> {
+                state.copy(submitting = false, savedShare = mutation.saved)
             }
         }
 }
