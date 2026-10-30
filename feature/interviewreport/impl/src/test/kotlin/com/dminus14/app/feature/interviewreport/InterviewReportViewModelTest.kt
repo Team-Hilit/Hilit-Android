@@ -1,5 +1,7 @@
 package com.dminus14.app.feature.interviewreport
 
+import com.dminus14.app.domain.model.GuestFeedbackItem
+import com.dminus14.app.domain.model.GuestFeedbackSummary
 import com.dminus14.app.domain.model.InterviewAbandon
 import com.dminus14.app.domain.model.InterviewAbandonRequestCause
 import com.dminus14.app.domain.model.InterviewReport
@@ -21,6 +23,7 @@ import com.dminus14.app.domain.repository.InterviewRepository
 import com.dminus14.app.domain.usecase.GetVideoExpiryUseCase
 import com.dminus14.app.domain.usecase.ObserveInterviewReportUseCase
 import com.dminus14.app.feature.interviewreport.InterviewReportState.Phase
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -269,6 +272,86 @@ class InterviewReportViewModelTest {
             assertNull(viewModel.state.value.videoExpirySeconds)
         }
 
+    @Test
+    fun `새로고침은 기존 리포트를 유지하고 중복 요청 없이 최신 피드백을 반영한다`() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val repository =
+                FakeInterviewRepository(
+                    listOf(
+                        readyReport(),
+                        readyReport().copy(
+                            guestFeedback =
+                                GuestFeedbackSummary(
+                                    participantCount = 1,
+                                    guests = listOf(GuestFeedbackItem("합성 지인", emptyList())),
+                                ),
+                        ),
+                    ),
+                    refreshGate = gate,
+                )
+            val viewModel = viewModel(repository)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
+            advanceUntilIdle()
+            val before = viewModel.state.value.phase
+            viewModel.onIntent(InterviewReportIntent.SelectGuestFeedback(2))
+            repository.expiry = InterviewVideoExpiry(expiresInSeconds = 7200L, expired = false)
+            viewModel.onIntent(InterviewReportIntent.RefreshReport)
+            viewModel.onIntent(InterviewReportIntent.RefreshReport)
+            assertEquals(2, viewModel.state.value.selectedGuestFeedbackIndex)
+            assertTrue(viewModel.state.value.isRefreshing)
+            assertEquals(before, viewModel.state.value.phase)
+            assertEquals(2, repository.reportCalls)
+            gate.complete(Unit)
+            advanceUntilIdle()
+            val report = (viewModel.state.value.phase as Phase.Ready).report
+            assertEquals(1, report.guestFeedback?.participantCount)
+            assertEquals(false, viewModel.state.value.isRefreshing)
+            assertEquals(2, repository.expiryCalls)
+            assertEquals(7200L, viewModel.state.value.videoExpirySeconds)
+            assertEquals(0, viewModel.state.value.selectedGuestFeedbackIndex)
+        }
+
+    @Test
+    fun `새로고침의 실패 응답은 기존 분석 부족 리포트를 유지하고 표시를 종료한다`() =
+        runTest {
+            val repository =
+                FakeInterviewRepository(
+                    listOf(
+                        readyReport().copy(status = InterviewReportStatus.INSUFFICIENT_ANALYSIS),
+                        readyReport().copy(status = InterviewReportStatus.FAILED),
+                    ),
+                )
+            val viewModel = viewModel(repository)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
+            advanceUntilIdle()
+            val before = viewModel.state.value.phase
+            viewModel.onIntent(InterviewReportIntent.RefreshReport)
+            advanceUntilIdle()
+            assertEquals(before, viewModel.state.value.phase)
+            assertEquals(false, viewModel.state.value.isRefreshing)
+        }
+
+    @Test
+    fun `새로고침 중 예외가 발생해도 기존 리포트를 보존하고 다시 요청할 수 있다`() =
+        runTest {
+            val repository = FakeInterviewRepository(listOf(readyReport()))
+            val viewModel = viewModel(repository)
+            viewModel.onIntent(InterviewReportIntent.Load(1L))
+            advanceUntilIdle()
+            val before = viewModel.state.value.phase
+            repository.refreshError = IllegalStateException("합성 조회 오류")
+            viewModel.onIntent(InterviewReportIntent.RefreshReport)
+            advanceUntilIdle()
+            assertEquals(before, viewModel.state.value.phase)
+            assertEquals(false, viewModel.state.value.isRefreshing)
+            repository.refreshError = null
+            viewModel.onIntent(InterviewReportIntent.RefreshReport)
+            advanceUntilIdle()
+            assertEquals(3, repository.reportCalls)
+            assertEquals(false, viewModel.state.value.isRefreshing)
+        }
+
     private fun readyReport(): InterviewReport =
         InterviewReport(
             status = InterviewReportStatus.READY,
@@ -288,11 +371,20 @@ class InterviewReportViewModelTest {
 
 private class FakeInterviewRepository(
     private val responses: List<InterviewReport>,
-    private val expiry: InterviewVideoExpiry? = null,
+    var expiry: InterviewVideoExpiry? = null,
+    var refreshError: Throwable? = null,
+    private val refreshGate: CompletableDeferred<Unit>? = null,
 ) : InterviewRepository {
     private var index: Int = 0
+    var reportCalls = 0
+    var expiryCalls = 0
 
     override suspend fun getReport(sessionId: Long): InterviewReport {
+        reportCalls += 1
+        if (reportCalls > 1) {
+            refreshGate?.await()
+            refreshError?.let { throw it }
+        }
         val current = index.coerceAtMost(responses.lastIndex)
         index += 1
         return responses[current]
@@ -339,8 +431,10 @@ private class FakeInterviewRepository(
         wrapUpEndSec: Float?,
     ) = error("사용하지 않음")
 
-    override suspend fun getExpiry(sessionId: Long): InterviewVideoExpiry =
-        expiry ?: error("사용하지 않음")
+    override suspend fun getExpiry(sessionId: Long): InterviewVideoExpiry {
+        expiryCalls += 1
+        return expiry ?: error("사용하지 않음")
+    }
 }
 
 private class ThrowingInterviewRepository : InterviewRepository {

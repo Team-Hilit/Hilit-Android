@@ -17,10 +17,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dminus14.app.feature.interviewreport.component.DetailReportSectionHeader
@@ -98,9 +105,7 @@ internal fun InterviewReportContent(
             is InterviewReportState.Phase.InsufficientAnalysis -> {
                 ReadyReport(
                     report = phase.report,
-                    selectedCardIndex = state.selectedCardIndex,
-                    selectedGuestFeedbackIndex = state.selectedGuestFeedbackIndex,
-                    videoExpirySeconds = state.videoExpirySeconds,
+                    state = state,
                     onIntent = onIntent,
                 )
             }
@@ -108,9 +113,7 @@ internal fun InterviewReportContent(
             is InterviewReportState.Phase.Ready -> {
                 ReadyReport(
                     report = phase.report,
-                    selectedCardIndex = state.selectedCardIndex,
-                    selectedGuestFeedbackIndex = state.selectedGuestFeedbackIndex,
-                    videoExpirySeconds = state.videoExpirySeconds,
+                    state = state,
                     onIntent = onIntent,
                 )
             }
@@ -141,65 +144,101 @@ internal fun InterviewReportContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("LongMethod")
 private fun ReadyReport(
     report: ReportUiModel,
-    selectedCardIndex: Int,
-    selectedGuestFeedbackIndex: Int,
-    videoExpirySeconds: Long?,
+    state: InterviewReportState,
     onIntent: (InterviewReportIntent) -> Unit,
 ) {
     val scrollState = rememberScrollState()
+    val refreshState = rememberPullToRefreshState()
+    val thresholdPx =
+        with(LocalDensity.current) { PullToRefreshDefaults.PositionalThreshold.toPx() }
+    val indicatorSize = 60.dp
+    val indicatorSizePx = with(LocalDensity.current) { indicatorSize.toPx() }
     Column(modifier = Modifier.fillMaxSize()) {
         ReportTopBar(onClose = { onIntent(InterviewReportIntent.ClickClose) })
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 20.dp)
-                    .navigationBarsPadding()
-                    .padding(bottom = 40.dp),
+        PullToRefreshBox(
+            isRefreshing = state.isRefreshing,
+            onRefresh = { onIntent(InterviewReportIntent.RefreshReport) },
+            state = refreshState,
+            modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds(),
+            indicator = {
+                if (state.isRefreshing || refreshState.distanceFraction > 0f) {
+                    HilitLoadingIndicator(
+                        size = indicatorSize,
+                        modifier =
+                            Modifier.align(Alignment.TopCenter).graphicsLayer {
+                                val fraction = refreshState.distanceFraction
+                                val scale = fraction.coerceIn(0f, 1f)
+                                scaleX = scale
+                                scaleY = scale
+                                translationY = (thresholdPx * fraction - indicatorSizePx) / 2f
+                            },
+                        contentDescription = "리포트 새로고침 중",
+                    )
+                }
+            },
         ) {
-            Spacer(Modifier.height(10.dp))
-            HeadlineSection(headline = report.headline)
-            Spacer(Modifier.height(24.dp))
-            VideoCountdownCard(
-                video = report.video,
-                expirySeconds = videoExpirySeconds,
-                onClick = { onIntent(InterviewReportIntent.ClickWatchVideo) },
-            )
-            if (report.cards.isNotEmpty()) {
-                Spacer(Modifier.height(24.dp))
-                SectionDivider()
-                Spacer(Modifier.height(24.dp))
-                val safeIndex = selectedCardIndex.coerceIn(0, report.cards.lastIndex)
-                DetailReportSectionHeader(
-                    resolutionNotice = report.cards[safeIndex].resolutionNotice,
-                )
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationY = thresholdPx * refreshState.distanceFraction
+                        }.verticalScroll(scrollState)
+                        .padding(horizontal = 20.dp)
+                        .navigationBarsPadding()
+                        .padding(bottom = 40.dp),
+            ) {
                 Spacer(Modifier.height(10.dp))
-                QuestionTabRow(
-                    cards = report.cards,
-                    selectedIndex = safeIndex,
-                    onSelect = { onIntent(InterviewReportIntent.SelectCard(it)) },
-                )
+                HeadlineSection(headline = report.headline)
                 Spacer(Modifier.height(24.dp))
-                ReportCard(
-                    card = report.cards[safeIndex],
-                    cardIndex = safeIndex,
-                    onHighlightClick = { cardIndex, spanIndex ->
-                        onIntent(InterviewReportIntent.ClickHighlight(cardIndex, spanIndex))
-                    },
+                VideoCountdownCard(
+                    video = report.video,
+                    expirySeconds = state.videoExpirySeconds,
+                    onClick = { onIntent(InterviewReportIntent.ClickWatchVideo) },
                 )
-            }
-            report.guestFeedback?.let { guestFeedback ->
-                Spacer(Modifier.height(36.dp))
-                GuestFeedbackSection(
-                    model = guestFeedback,
-                    selectedGuestIndex = selectedGuestFeedbackIndex,
-                    onSelectGuest = { onIntent(InterviewReportIntent.SelectGuestFeedback(it)) },
-                    onClickInvite = { onIntent(InterviewReportIntent.ClickGuestFeedbackInvite) },
-                )
+                if (report.cards.isNotEmpty()) {
+                    Spacer(Modifier.height(24.dp))
+                    SectionDivider()
+                    Spacer(Modifier.height(24.dp))
+                    val safeIndex = state.selectedCardIndex.coerceIn(0, report.cards.lastIndex)
+                    DetailReportSectionHeader(
+                        resolutionNotice = report.cards[safeIndex].resolutionNotice,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    QuestionTabRow(
+                        cards = report.cards,
+                        selectedIndex = safeIndex,
+                        onSelect = { onIntent(InterviewReportIntent.SelectCard(it)) },
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    ReportCard(
+                        card = report.cards[safeIndex],
+                        cardIndex = safeIndex,
+                        onHighlightClick = { cardIndex, spanIndex ->
+                            onIntent(
+                                InterviewReportIntent.ClickHighlight(cardIndex, spanIndex),
+                            )
+                        },
+                    )
+                }
+                report.guestFeedback?.let { guestFeedback ->
+                    Spacer(Modifier.height(36.dp))
+                    GuestFeedbackSection(
+                        model = guestFeedback,
+                        selectedGuestIndex = state.selectedGuestFeedbackIndex,
+                        onSelectGuest = {
+                            onIntent(InterviewReportIntent.SelectGuestFeedback(it))
+                        },
+                        onClickInvite = {
+                            onIntent(InterviewReportIntent.ClickGuestFeedbackInvite)
+                        },
+                    )
+                }
             }
         }
     }

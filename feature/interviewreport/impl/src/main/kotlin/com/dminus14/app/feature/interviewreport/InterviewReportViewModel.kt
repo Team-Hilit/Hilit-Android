@@ -4,8 +4,10 @@ import com.dminus14.app.core.common.event.GlobalAppEvent
 import com.dminus14.app.core.common.event.GlobalErrorHandler
 import com.dminus14.app.core.common.mvi.MviReducer
 import com.dminus14.app.core.common.mvi.MviViewModel
+import com.dminus14.app.domain.exception.InterviewSessionNotFoundException
 import com.dminus14.app.domain.exception.NetworkUnavailableException
 import com.dminus14.app.domain.exception.ServerException
+import com.dminus14.app.domain.model.InterviewReport
 import com.dminus14.app.domain.model.InterviewReportStatus
 import com.dminus14.app.domain.usecase.GetVideoExpiryUseCase
 import com.dminus14.app.domain.usecase.ObserveInterviewReportUseCase
@@ -40,6 +42,10 @@ class InterviewReportViewModel
                         context.dispatch(InterviewReportMutation.SessionBound(intent.sessionId))
                     }
                     load()
+                }
+
+                InterviewReportIntent.RefreshReport -> {
+                    refreshReport()
                 }
 
                 InterviewReportIntent.ClickRetry -> {
@@ -90,7 +96,13 @@ class InterviewReportViewModel
             }
         }
 
-        private fun load() {
+        private fun refreshReport() {
+            if (!state.value.isRefreshing && state.value.phase.reportOrNull() != null) {
+                load(isRefresh = true)
+            }
+        }
+
+        private fun load(isRefresh: Boolean = false) {
             val sessionId = state.value.sessionId
             if (sessionId <= 0L) {
                 // 초기 phase 가 Loading 이라, 여기서 조용히 빠져나가면(잘못된 route 인자·딥링크로
@@ -101,55 +113,89 @@ class InterviewReportViewModel
             }
             pollingJob?.cancel()
             expiryJob?.cancel()
-            context.dispatch(InterviewReportMutation.LoadStarted)
+            context.dispatch(
+                if (isRefresh) {
+                    InterviewReportMutation.RefreshStarted
+                } else {
+                    InterviewReportMutation.LoadStarted
+                },
+            )
             fetchVideoExpiry(sessionId)
             pollingJob =
                 context.launch {
-                    observeInterviewReport(sessionId)
-                        .onEach { report ->
-                            currentCoroutineContext().ensureActive()
-                            val phase =
-                                when (report.status) {
-                                    InterviewReportStatus.READY -> {
-                                        InterviewReportState.Phase.Ready(
-                                            report = InterviewReportUiMapper.map(report),
-                                        )
-                                    }
-
-                                    InterviewReportStatus.INSUFFICIENT_ANALYSIS -> {
-                                        InterviewReportState.Phase.InsufficientAnalysis(
-                                            report = InterviewReportUiMapper.map(report),
-                                        )
-                                    }
-
-                                    InterviewReportStatus.FAILED -> {
-                                        InterviewReportState.Phase.Failed
-                                    }
-
-                                    // UNKNOWN 은 ObserveInterviewReportUseCase 가 GENERATING 이 아니라고
-                                    // 보고 즉시 flow 를 종료한다(더 이상 폴링하지 않음). GENERATING 과
-                                    // 묶어서 Loading 으로 매핑하면 다음 emit 이 영영 오지 않아 스피너에
-                                    // 영구 고착되므로, Failed 로 보내 재시도 UI 를 노출한다.
-                                    InterviewReportStatus.UNKNOWN -> {
-                                        InterviewReportState.Phase.Failed
-                                    }
-
-                                    InterviewReportStatus.GENERATING -> {
-                                        InterviewReportState.Phase.Loading
-                                    }
+                    try {
+                        observeInterviewReport(sessionId)
+                            .onEach { report ->
+                                currentCoroutineContext().ensureActive()
+                                val phase = report.toPhase()
+                                if (isRefresh && phase is InterviewReportState.Phase.Failed) {
+                                    sendEffect(
+                                        InterviewReportEffect.ShowToast(
+                                            "리포트를 새로고침하지 못했어요. 다시 시도해 주세요.",
+                                        ),
+                                    )
+                                } else if (
+                                    !isRefresh || phase !is InterviewReportState.Phase.Loading
+                                ) {
+                                    context.dispatch(
+                                        InterviewReportMutation.PhaseReceived(phase),
+                                    )
                                 }
-                            context.dispatch(InterviewReportMutation.PhaseReceived(phase))
-                        }.catch { error ->
-                            handleCommonError(error)
-                        }.collect()
+                            }.catch { error ->
+                                handleCommonError(error, isRefresh)
+                            }.collect()
+                    } finally {
+                        if (isRefresh) {
+                            currentCoroutineContext().ensureActive()
+                            context.dispatch(InterviewReportMutation.RefreshFinished)
+                        }
+                    }
                 }
         }
 
+        private fun InterviewReport.toPhase(): InterviewReportState.Phase =
+            when (status) {
+                InterviewReportStatus.READY -> {
+                    InterviewReportState.Phase.Ready(InterviewReportUiMapper.map(this))
+                }
+
+                InterviewReportStatus.INSUFFICIENT_ANALYSIS -> {
+                    InterviewReportState.Phase.InsufficientAnalysis(
+                        InterviewReportUiMapper.map(this),
+                    )
+                }
+
+                InterviewReportStatus.FAILED, InterviewReportStatus.UNKNOWN -> {
+                    InterviewReportState.Phase.Failed
+                }
+
+                InterviewReportStatus.GENERATING -> {
+                    InterviewReportState.Phase.Loading
+                }
+            }
+
         // 아래 에러 처리 사항은 임시입니다. 공통 처리 기획자 문의 모든 ViewModel 일괄 수정 예정
-        private suspend fun handleCommonError(error: Throwable) {
+        private suspend fun handleCommonError(
+            error: Throwable,
+            isRefresh: Boolean,
+        ) {
             currentCoroutineContext().ensureActive()
-            context.dispatch(InterviewReportMutation.LoadFailed)
+            context.dispatch(
+                if (isRefresh) {
+                    InterviewReportMutation.RefreshFinished
+                } else {
+                    InterviewReportMutation.LoadFailed
+                },
+            )
             when {
+                isRefresh && error is InterviewSessionNotFoundException -> {
+                    sendEffect(
+                        InterviewReportEffect.ShowToast(
+                            "리포트를 새로고침하지 못했어요. 다시 시도해 주세요.",
+                        ),
+                    )
+                }
+
                 error is NetworkUnavailableException -> {
                     GlobalErrorHandler.emit(GlobalAppEvent.ShowNetworkErrorAndExit)
                 }
@@ -226,6 +272,10 @@ private sealed interface InterviewReportMutation {
         val guestIndex: Int,
     ) : InterviewReportMutation
 
+    data object RefreshStarted : InterviewReportMutation
+
+    data object RefreshFinished : InterviewReportMutation
+
     data object LoadStarted : InterviewReportMutation
 
     data object LoadFailed : InterviewReportMutation
@@ -271,9 +321,18 @@ private object InterviewReportReducer : MviReducer<InterviewReportState, Intervi
                 state.copy(selectedGuestFeedbackIndex = mutation.guestIndex)
             }
 
+            InterviewReportMutation.RefreshStarted -> {
+                state.copy(isRefreshing = true)
+            }
+
+            InterviewReportMutation.RefreshFinished -> {
+                state.copy(isRefreshing = false)
+            }
+
             InterviewReportMutation.LoadStarted -> {
                 state.copy(
                     phase = InterviewReportState.Phase.Loading,
+                    isRefreshing = false,
                     selectedCardIndex = 0,
                     selectedGuestFeedbackIndex = 0,
                     videoExpirySeconds = null,
@@ -285,11 +344,40 @@ private object InterviewReportReducer : MviReducer<InterviewReportState, Intervi
             }
 
             is InterviewReportMutation.PhaseReceived -> {
-                state.copy(phase = mutation.phase)
+                receivePhase(state, mutation.phase)
             }
 
             is InterviewReportMutation.VideoExpiryReceived -> {
                 state.copy(videoExpirySeconds = mutation.seconds)
             }
         }
+
+    private fun receivePhase(
+        state: InterviewReportState,
+        phase: InterviewReportState.Phase,
+    ): InterviewReportState {
+        val report =
+            when (phase) {
+                is InterviewReportState.Phase.Ready -> phase.report
+                is InterviewReportState.Phase.InsufficientAnalysis -> phase.report
+                else -> null
+            }
+        return state.copy(
+            phase = phase,
+            selectedCardIndex =
+                state.selectedCardIndex.coerceIn(
+                    0,
+                    (
+                        report?.cards?.lastIndex
+                            ?: 0
+                    ).coerceAtLeast(0),
+                ),
+            selectedGuestFeedbackIndex =
+                state.selectedGuestFeedbackIndex.coerceIn(
+                    0,
+                    (report?.guestFeedback?.guests?.lastIndex ?: 0).coerceAtLeast(0),
+                ),
+            selectedHighlight = null,
+        )
+    }
 }
