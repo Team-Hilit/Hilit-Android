@@ -312,24 +312,12 @@ private object GuestFeedbackRequestReducer :
             is GuestFeedbackRequestMutation.SavedShareLoaded -> {
                 state.copy(
                     savedShare = mutation.saved,
-                    selectedAxes =
-                        mutation.saved.axes
-                            .takeIf { it.isNotEmpty() }
-                            ?.toSet()
-                            ?: state.selectedAxes,
+                    selectedAxes = restoredAxes(mutation.saved, state.selectedAxes),
                 )
             }
 
             is GuestFeedbackRequestMutation.AxisToggled -> {
-                val axes = state.selectedAxes
-                val next =
-                    if (mutation.axis in axes) {
-                        // 최소 1개는 유지한다(서버 계약 1~5개).
-                        if (axes.size <= 1) axes else axes - mutation.axis
-                    } else {
-                        axes + mutation.axis
-                    }
-                state.copy(selectedAxes = next)
+                state.copy(selectedAxes = toggledAxes(state.selectedAxes, mutation.axis))
             }
 
             GuestFeedbackRequestMutation.SubmissionStarted -> {
@@ -374,3 +362,20 @@ private object GuestFeedbackRequestReducer :
             }
         }
 }
+
+/** 저장된 기록의 생성 당시 항목으로 토글을 복원한다. 기록에 항목이 없으면 현재 선택을 유지한다. */
+private fun restoredAxes(
+    saved: SavedFeedbackShare,
+    current: Set<GuestFeedbackAxisCode>,
+): Set<GuestFeedbackAxisCode> = saved.axes.takeIf { it.isNotEmpty() }?.toSet() ?: current
+
+private fun toggledAxes(
+    axes: Set<GuestFeedbackAxisCode>,
+    axis: GuestFeedbackAxisCode,
+): Set<GuestFeedbackAxisCode> =
+    if (axis in axes) {
+        // 최소 1개는 유지한다(서버 계약 1~5개).
+        if (axes.size <= 1) axes else axes - axis
+    } else {
+        axes + axis
+    }
