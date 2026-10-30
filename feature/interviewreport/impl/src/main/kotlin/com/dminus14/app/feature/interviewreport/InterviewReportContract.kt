@@ -13,6 +13,8 @@ sealed interface InterviewReportIntent : MviIntent {
 
     data object ClickClose : InterviewReportIntent
 
+    data object RefreshReport : InterviewReportIntent
+
     data object ClickRetry : InterviewReportIntent
 
     data object ClickWatchVideo : InterviewReportIntent
@@ -45,6 +47,7 @@ sealed interface InterviewReportIntent : MviIntent {
 data class InterviewReportState(
     val phase: Phase = Phase.Loading,
     val sessionId: Long = 0L,
+    val isRefreshing: Boolean = false,
     val selectedHighlight: SelectedHighlight? = null,
     /** 상세 리포트에서 현재 선택된 질문 탭 index. */
     val selectedCardIndex: Int = 0,

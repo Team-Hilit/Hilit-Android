@@ -72,3 +72,18 @@ private fun GuestFeedbackLinkCreatedPreview() {
         )
     }
 }
+
+@Preview(name = "리포트 - 새로고침 중", heightDp = 1100)
+@Composable
+private fun InterviewReportRefreshingPreview() {
+    HilitTheme {
+        InterviewReportContent(
+            state =
+                InterviewReportState(
+                    phase = InterviewReportState.Phase.Ready(PreviewInterviewReport.readyReport),
+                    isRefreshing = true,
+                ),
+            onIntent = {},
+        )
+    }
+}
