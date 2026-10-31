@@ -53,6 +53,10 @@ sealed interface OnboardingEffect : MviEffect {
 
     /** 프로필 등록 성공. 화면에서 Home 으로 이동한다. */
     data object Completed : OnboardingEffect
+
+    data class ShowToast(
+        val message: String,
+    ) : OnboardingEffect
 }
 
 /**

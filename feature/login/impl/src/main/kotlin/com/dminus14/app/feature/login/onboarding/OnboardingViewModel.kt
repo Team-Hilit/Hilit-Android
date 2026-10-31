@@ -146,6 +146,11 @@ class OnboardingViewModel
 
                         is ValidationException -> {
                             mvi.dispatch(OnboardingMutation.ProfileRejected(error.message))
+                            mvi.sendEffect(
+                                OnboardingEffect.ShowToast(
+                                    error.message.ifBlank { "입력값을 확인해 주세요." },
+                                ),
+                            )
                         }
 
                         else -> {

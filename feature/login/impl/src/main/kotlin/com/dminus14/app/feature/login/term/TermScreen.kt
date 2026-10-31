@@ -1,6 +1,7 @@
 package com.dminus14.app.feature.login.term
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -45,6 +46,7 @@ import com.dminus14.designsystem.component.term.TermBox
 import com.dminus14.designsystem.component.term.TermBoxType
 import com.dminus14.designsystem.component.topbar.HilitTopBar
 import com.dminus14.designsystem.theme.HilitTheme
+import kotlinx.coroutines.flow.first
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,12 +59,16 @@ fun TermScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    BackHandler(enabled = state.visibleTermDetail == null) {
+        viewModel.onIntent(TermIntent.ClickClose)
+    }
+
     LaunchedEffect(Unit) {
         viewModel.onIntent(TermIntent.Load)
     }
 
     LaunchedEffect(Unit) {
-        viewModel.effect.collect { effect ->
+        viewModel.effect.first { effect ->
             when (effect) {
                 TermEffect.Closed -> {
                     onClose()
@@ -84,6 +90,8 @@ fun TermScreen(
                     Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
                 }
             }
+            // 닫은 화면의 늦은 응답이 추가 이동을 유발하지 않도록 수집을 끝낸다.
+            effect == TermEffect.Closed
         }
     }
 
