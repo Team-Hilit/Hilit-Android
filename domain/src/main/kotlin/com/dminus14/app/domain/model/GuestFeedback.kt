@@ -40,6 +40,22 @@ data class GuestFeedbackAxis(
     val displayName: String,
 )
 
+/**
+ * 기기에 저장된 지인 피드백 공유 기록이다.
+ *
+ * 세션당 활성 링크는 1개이므로 sessionId 하나에 기록 하나가 대응한다. 링크를 다시 만들지 않고
+ * 그대로 복사·공유할 수 있도록 [link]를, 요청 멘트를 생성 당시와 같게 조립할 수 있도록 [axes]를
+ * 함께 보관한다.
+ *
+ * [link]와 [axes]를 저장하기 전 버전에서 만든 기록은 [link]가 null, [axes]가 빈 목록이다. 이때는
+ * [token]으로 링크를 다시 만들어 저장한다.
+ */
+data class SavedFeedbackShare(
+    val token: String,
+    val link: String? = null,
+    val axes: List<GuestFeedbackAxisCode> = emptyList(),
+)
+
 /** 지인이 평가하는 비언어 태도 항목이다. */
 enum class GuestFeedbackAxisCode {
     GAZE,
