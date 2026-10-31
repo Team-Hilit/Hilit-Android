@@ -117,10 +117,14 @@ internal fun GuestFeedbackRequestContent(
                 Spacer(Modifier.height(24.dp))
             }
             HilitFixedBottomButton(
-                // 저장된 링크가 있으면 눌렀을 때 서버를 거치지 않고 그 링크로 같은 모달을 다시
-                // 띄우므로, 사용자에게는 첫 생성과 구분되지 않는다. 그래서 레이블도 바꾸지 않는다.
+                // 생성 후에는 서버를 거치지 않고 저장된 링크를 바로 복사한다(#219).
                 // 기기에 기록이 없어 링크를 꺼낼 수 없는 복구 상태에서만 종료 버튼이 된다.
-                text = if (state.endOnlyShare) "피드백 종료하기" else "피드백 링크 생성",
+                text =
+                    when {
+                        state.endOnlyShare -> "피드백 종료하기"
+                        state.hasActiveShare -> "피드백 링크 복사하기"
+                        else -> "피드백 링크 생성"
+                    },
                 // Figma 443:8044 실제 버튼은 짙은 회색(gray900) 배경 + 흰 글자로, Dark 타입(흰 배경)이
                 // 아니라 Light 타입(활성 시 hilitBlack800 배경, 누를 때 gray900)과 일치한다. 이 앱의
                 // 다른 화면 CTA 버튼도 전부 Light 를 쓴다 — Dark 타입은 이 파일에서만 잘못 쓰이고 있었음.
@@ -136,15 +140,11 @@ internal fun GuestFeedbackRequestContent(
             )
         }
 
-        if (state.messageCopied) {
-            MessageCopiedModal()
-        } else if (state.shareLink != null) {
+        if (state.shareLink != null) {
             LinkCreatedModal(
                 message = buildGuestFeedbackShareMessage(state.messageAxes, state.shareLink),
                 onCopy = { onIntent(GuestFeedbackRequestIntent.ClickCopyMessage) },
                 onShare = { onIntent(GuestFeedbackRequestIntent.ClickShareMessage) },
-                onEndShare = { onIntent(GuestFeedbackRequestIntent.ClickEndShare) },
-                onDismiss = { onIntent(GuestFeedbackRequestIntent.DismissShareLinkModal) },
             )
         }
     }
@@ -187,10 +187,10 @@ private fun LinkCreatedModal(
     message: String,
     onCopy: () -> Unit,
     onShare: () -> Unit,
-    onEndShare: () -> Unit,
-    onDismiss: () -> Unit,
 ) {
-    ModalScrim(onDismiss = onDismiss) {
+    // 복사·공유를 마치기 전에 닫히지 않도록 X 버튼과 배경 탭 닫기를 두지 않는다(#219).
+    // 복사하면 2초 뒤 자동으로 닫힌다.
+    ModalScrim {
         Column(
             modifier =
                 Modifier
@@ -199,7 +199,6 @@ private fun LinkCreatedModal(
                     .background(HilitTheme.colors.hilitWhite),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            ModalCloseRow(onDismiss = onDismiss)
             Column(
                 modifier =
                     Modifier
@@ -222,7 +221,6 @@ private fun LinkCreatedModal(
                     textAlign = TextAlign.Center,
                 )
                 ShareMessagePreview(message = message)
-                EndShareRow(onEndShare = onEndShare)
             }
             HilitFixedBottomDualButton(
                 modifier = Modifier.fillMaxWidth(),
@@ -234,42 +232,6 @@ private fun LinkCreatedModal(
             )
         }
     }
-}
-
-@Composable
-private fun ModalCloseRow(onDismiss: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        HilitIcon(
-            asset = HilitIconAsset.Cancel,
-            contentDescription = "닫기",
-            tint = HilitTheme.colors.gray500,
-            modifier =
-                Modifier
-                    .padding(16.dp)
-                    .size(20.dp)
-                    .clickable(onClick = onDismiss),
-        )
-    }
-}
-
-/**
- * 모달 안의 피드백 종료 진입점.
- *
- * 종료는 되돌릴 수 없으므로([EndFeedbackShareUseCase][com.dminus14.app.domain.usecase.EndFeedbackShareUseCase])
- * 복사·공유 버튼과 붙지 않게 떼어 두고 색과 크기도 낮춘다.
- */
-@Composable
-private fun EndShareRow(onEndShare: () -> Unit) {
-    Text(
-        text = "피드백 종료하기",
-        style = HilitTheme.typography.body6,
-        color = HilitTheme.colors.gray500,
-        textAlign = TextAlign.Center,
-        modifier =
-            Modifier
-                .clickable(onClick = onEndShare)
-                .padding(vertical = 4.dp),
-    )
 }
 
 /** 클립보드·공유 시트로 나갈 전문을 그대로 보여주는 프리뷰. */
@@ -294,55 +256,18 @@ private fun ShareMessagePreview(
 }
 
 @Composable
-private fun MessageCopiedModal() {
-    ModalScrim(onDismiss = {}) {
-        Column(
-            modifier =
-                Modifier
-                    .padding(horizontal = 24.dp)
-                    .fillMaxWidth()
-                    .background(HilitTheme.colors.hilitWhite)
-                    .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            HilitIcon(
-                asset = HilitIconAsset.Link,
-                contentDescription = null,
-                modifier = Modifier.size(74.dp),
-            )
-            Text(
-                text = "메시지 복사 완료",
-                style = HilitTheme.typography.body6,
-                color = HilitTheme.colors.gray500,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = "지인에게 붙여넣어 보내보세요!",
-                style = HilitTheme.typography.sub4,
-                color = HilitTheme.colors.hilitBlack800,
-                textAlign = TextAlign.Center,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ModalScrim(
-    onDismiss: () -> Unit,
-    content: @Composable () -> Unit,
-) {
+private fun ModalScrim(content: @Composable () -> Unit) {
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.65f))
-                // 배경(스크림)을 탭하면 닫는다. 클릭을 여기서 소비해 뒤에 깔린 화면(항목선택
-                // 리스트 등)의 클릭 요소로 뚫고 들어가지 않게 막는다.
+                // 배경 탭으로는 닫지 않는다(#219). 다만 클릭을 여기서 소비해 뒤에 깔린 화면
+                // (항목선택 리스트 등)의 클릭 요소로 뚫고 들어가지 않게 막는다.
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onDismiss,
+                    onClick = {},
                 ),
         contentAlignment = Alignment.Center,
     ) {

@@ -134,7 +134,7 @@ class GuestFeedbackRequestViewModelTest {
         }
 
     @Test
-    fun `저장된 링크가 있으면 제출해도 서버에 새로 만들지 않고 저장된 링크로 모달을 띄운다`() =
+    fun `저장된 링크가 있으면 제출해도 서버에 새로 만들지 않고 저장된 링크를 복사한다`() =
         runTest {
             val localRepository =
                 FakeFeedbackShareLocalRepository(
@@ -153,13 +153,21 @@ class GuestFeedbackRequestViewModelTest {
             viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
             advanceUntilIdle()
 
+            val effects = mutableListOf<GuestFeedbackRequestEffect>()
+            val job = TestScope(dispatcher).launch { viewModel.effect.collect { effects += it } }
+
             viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
             advanceUntilIdle()
 
-            assertEquals("https://short.link/saved", viewModel.state.value.shareLink)
+            val copied =
+                effects.filterIsInstance<GuestFeedbackRequestEffect.CopyToClipboard>().single()
+            assertTrue(copied.text.contains("https://short.link/saved"))
+            // 모달은 다시 띄우지 않는다(#219).
+            assertNull(viewModel.state.value.shareLink)
             assertFalse(repository.createCalled)
             // 저장된 링크를 그대로 쓰므로 동적 링크도 다시 만들지 않는다.
             assertNull(dynamicLinkRepository.requestedDeepLink)
+            job.cancel()
         }
 
     @Test
@@ -196,43 +204,126 @@ class GuestFeedbackRequestViewModelTest {
             viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
             advanceUntilIdle()
 
+            val effects = mutableListOf<GuestFeedbackRequestEffect>()
+            val job = TestScope(dispatcher).launch { viewModel.effect.collect { effects += it } }
+
             viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
             advanceUntilIdle()
 
             assertEquals("hilit://feedback/legacy-token", dynamicLinkRepository.requestedDeepLink)
             assertEquals(
                 "https://short.link/hilit://feedback/legacy-token",
-                viewModel.state.value.shareLink,
-            )
-            assertEquals(
-                "https://short.link/hilit://feedback/legacy-token",
                 localRepository.getShare(7L)?.link,
             )
+            val copied =
+                effects.filterIsInstance<GuestFeedbackRequestEffect.CopyToClipboard>().single()
+            assertTrue(copied.text.contains("https://short.link/hilit://feedback/legacy-token"))
+            job.cancel()
         }
 
     @Test
-    fun `모달에서 종료하면 공유를 종료하고 저장된 기록을 지운 뒤 리포트로 돌아간다`() =
+    fun `기기에 기록이 없어 복사할 수 없으면 하단 버튼으로 공유를 종료한다`() =
         runTest {
+            // 모달의 종료 진입점은 제거됐다(#219). 복사도 재생성도 불가능한 복구 상태에서만
+            // 하단 버튼이 종료로 동작한다.
+            val localRepository = FakeFeedbackShareLocalRepository()
+            val repository =
+                FakeFeedbackShareRepository(
+                    createFailure =
+                        FeedbackShareAlreadyExistsException(
+                            errCode = "FEEDBACK_SHARE_ALREADY_EXISTS",
+                            message = "이미 피드백 요청 링크가 있어요.",
+                        ),
+                )
+            val viewModel = viewModel(repository, localRepository)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
+            advanceUntilIdle()
+            viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
+            advanceUntilIdle()
+            assertTrue(viewModel.state.value.endOnlyShare)
+
+            val effects = mutableListOf<GuestFeedbackRequestEffect>()
+            val job = TestScope(dispatcher).launch { viewModel.effect.collect { effects += it } }
+
+            viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
+            advanceUntilIdle()
+
+            assertTrue(repository.closeCalled)
+            assertFalse(viewModel.state.value.endOnlyShare)
+            assertNull(viewModel.state.value.shareLink)
+            assertTrue(effects.any { it is GuestFeedbackRequestEffect.NavigateBack })
+            job.cancel()
+        }
+
+    @Test
+    fun `링크를 생성한 뒤에는 평가 항목을 바꿀 수 없고 이유를 토스트로 알린다`() =
+        runTest {
+            // 생성 API 는 1회만 성공하므로 토글을 바꿔도 링크에 반영되지 않는다(#219).
             val localRepository =
                 FakeFeedbackShareLocalRepository(
-                    mapOf(7L to SavedFeedbackShare("saved-token", "https://short.link/saved")),
+                    mapOf(
+                        7L to
+                            SavedFeedbackShare(
+                                token = "saved-token",
+                                link = "https://short.link/saved",
+                                axes = listOf(GuestFeedbackAxisCode.GAZE),
+                            ),
+                    ),
                 )
-            val repository = FakeFeedbackShareRepository()
-            val viewModel = viewModel(repository, localRepository)
+            val viewModel = viewModel(FakeFeedbackShareRepository(), localRepository)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
+            advanceUntilIdle()
+            val before = viewModel.state.value.selectedAxes
+
+            val effects = mutableListOf<GuestFeedbackRequestEffect>()
+            val job = TestScope(dispatcher).launch { viewModel.effect.collect { effects += it } }
+
+            viewModel.onIntent(
+                GuestFeedbackRequestIntent.ToggleAxis(GuestFeedbackAxisCode.EXPRESSION),
+            )
+            advanceUntilIdle()
+
+            assertEquals(before, viewModel.state.value.selectedAxes)
+            assertEquals(
+                "링크 생성 후 조작이 불가능합니다.",
+                effects.filterIsInstance<GuestFeedbackRequestEffect.ShowToast>().single().message,
+            )
+            job.cancel()
+        }
+
+    @Test
+    fun `링크를 생성한 뒤 하단 버튼은 저장된 링크로 멘트를 복사한다`() =
+        runTest {
+            // 모달을 다시 띄우지 않고 바로 복사한다(#219).
+            val localRepository =
+                FakeFeedbackShareLocalRepository(
+                    mapOf(
+                        7L to
+                            SavedFeedbackShare(
+                                token = "saved-token",
+                                link = "https://short.link/saved",
+                                axes = listOf(GuestFeedbackAxisCode.GAZE),
+                            ),
+                    ),
+                )
+            val viewModel = viewModel(FakeFeedbackShareRepository(), localRepository)
             viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
             advanceUntilIdle()
 
             val effects = mutableListOf<GuestFeedbackRequestEffect>()
             val job = TestScope(dispatcher).launch { viewModel.effect.collect { effects += it } }
 
-            viewModel.onIntent(GuestFeedbackRequestIntent.ClickEndShare)
+            viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
             advanceUntilIdle()
 
-            assertTrue(repository.closeCalled)
-            assertNull(localRepository.getShare(7L))
-            assertFalse(viewModel.state.value.hasActiveShare)
+            val copied =
+                effects.filterIsInstance<GuestFeedbackRequestEffect.CopyToClipboard>().single()
+            assertTrue(copied.text.contains("https://short.link/saved"))
+            assertEquals(
+                "피드백 링크가 복사되었습니다.",
+                effects.filterIsInstance<GuestFeedbackRequestEffect.ShowToast>().single().message,
+            )
             assertNull(viewModel.state.value.shareLink)
-            assertTrue(effects.any { it is GuestFeedbackRequestEffect.NavigateBack })
             job.cancel()
         }
 
