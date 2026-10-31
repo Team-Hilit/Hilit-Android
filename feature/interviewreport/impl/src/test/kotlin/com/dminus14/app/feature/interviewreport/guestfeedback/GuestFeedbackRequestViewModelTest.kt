@@ -4,13 +4,15 @@ import com.dminus14.app.domain.exception.EmptyAttitudeAxesException
 import com.dminus14.app.domain.exception.FeedbackShareAlreadyExistsException
 import com.dminus14.app.domain.exception.InterviewSessionNotFoundException
 import com.dminus14.app.domain.model.GuestFeedbackAxisCode
+import com.dminus14.app.domain.model.SavedFeedbackShare
 import com.dminus14.app.domain.repository.DynamicLinkRepository
 import com.dminus14.app.domain.repository.FeedbackShareLocalRepository
 import com.dminus14.app.domain.repository.FeedbackShareRepository
 import com.dminus14.app.domain.usecase.CreateFeedbackShareDynamicLinkUseCase
 import com.dminus14.app.domain.usecase.CreateFeedbackShareUseCase
 import com.dminus14.app.domain.usecase.EndFeedbackShareUseCase
-import com.dminus14.app.domain.usecase.GetSavedFeedbackShareTokenUseCase
+import com.dminus14.app.domain.usecase.GetSavedFeedbackShareUseCase
+import com.dminus14.app.domain.usecase.ResolveSavedFeedbackShareLinkUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -64,7 +66,7 @@ class GuestFeedbackRequestViewModelTest {
     }
 
     @Test
-    fun `저장된 token 이 없으면 Load 후에도 종료 가능 상태가 아니다`() =
+    fun `저장된 공유 기록이 없으면 Load 후에도 활성 공유가 없다`() =
         runTest {
             val viewModel = viewModel(FakeFeedbackShareRepository())
             viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
@@ -74,9 +76,10 @@ class GuestFeedbackRequestViewModelTest {
         }
 
     @Test
-    fun `Load 시 저장된 token 이 있으면 하단 버튼이 종료 상태로 바뀐다`() =
+    fun `Load 시 저장된 공유 기록이 있으면 활성 공유 상태가 된다`() =
         runTest {
-            val localRepository = FakeFeedbackShareLocalRepository(mapOf(7L to "saved-token"))
+            val localRepository =
+                FakeFeedbackShareLocalRepository(mapOf(7L to SavedFeedbackShare("saved-token")))
             val viewModel = viewModel(FakeFeedbackShareRepository(), localRepository)
             viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
             advanceUntilIdle()
@@ -85,7 +88,7 @@ class GuestFeedbackRequestViewModelTest {
         }
 
     @Test
-    fun `피드백 링크 생성 성공 시 동적 링크가 채워지고 token 을 저장한다`() =
+    fun `피드백 링크 생성 성공 시 token 과 링크와 선택 항목을 함께 저장한다`() =
         runTest {
             val localRepository = FakeFeedbackShareLocalRepository()
             val dynamicLinkRepository = FakeDynamicLinkRepository()
@@ -106,7 +109,10 @@ class GuestFeedbackRequestViewModelTest {
                 viewModel.state.value.shareLink,
             )
             assertTrue(viewModel.state.value.hasActiveShare)
-            assertEquals("abc123", localRepository.getToken(7L))
+            val saved = localRepository.getShare(7L)
+            assertEquals("abc123", saved?.token)
+            assertEquals("https://short.link/hilit://feedback/abc123", saved?.link)
+            assertEquals(GuestFeedbackAxisCode.entries, saved?.axes)
         }
 
     @Test
@@ -128,9 +134,89 @@ class GuestFeedbackRequestViewModelTest {
         }
 
     @Test
-    fun `종료 가능 상태에서 제출하면 공유를 종료하고 저장된 token 을 지운 뒤 리포트로 돌아간다`() =
+    fun `저장된 링크가 있으면 제출해도 서버에 새로 만들지 않고 저장된 링크로 모달을 띄운다`() =
         runTest {
-            val localRepository = FakeFeedbackShareLocalRepository(mapOf(7L to "saved-token"))
+            val localRepository =
+                FakeFeedbackShareLocalRepository(
+                    mapOf(
+                        7L to
+                            SavedFeedbackShare(
+                                token = "saved-token",
+                                link = "https://short.link/saved",
+                                axes = listOf(GuestFeedbackAxisCode.GAZE),
+                            ),
+                    ),
+                )
+            val repository = FakeFeedbackShareRepository()
+            val dynamicLinkRepository = FakeDynamicLinkRepository()
+            val viewModel = viewModel(repository, localRepository, dynamicLinkRepository)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
+            advanceUntilIdle()
+
+            viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
+            advanceUntilIdle()
+
+            assertEquals("https://short.link/saved", viewModel.state.value.shareLink)
+            assertFalse(repository.createCalled)
+            // 저장된 링크를 그대로 쓰므로 동적 링크도 다시 만들지 않는다.
+            assertNull(dynamicLinkRepository.requestedDeepLink)
+        }
+
+    @Test
+    fun `Load 시 저장된 선택 항목이 화면 토글로 복원된다`() =
+        runTest {
+            val savedAxes = listOf(GuestFeedbackAxisCode.GAZE, GuestFeedbackAxisCode.VOICE)
+            val localRepository =
+                FakeFeedbackShareLocalRepository(
+                    mapOf(
+                        7L to
+                            SavedFeedbackShare(
+                                token = "saved-token",
+                                link = "https://short.link/saved",
+                                axes = savedAxes,
+                            ),
+                    ),
+                )
+            val viewModel = viewModel(FakeFeedbackShareRepository(), localRepository)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
+            advanceUntilIdle()
+
+            assertEquals(savedAxes.toSet(), viewModel.state.value.selectedAxes)
+        }
+
+    @Test
+    fun `저장된 기록에 링크가 없으면 링크를 다시 만들어 저장한다`() =
+        runTest {
+            // 링크를 저장하기 전 버전에서 만든 기록이다. token 으로 다시 만들어 채운다.
+            val localRepository =
+                FakeFeedbackShareLocalRepository(mapOf(7L to SavedFeedbackShare("legacy-token")))
+            val dynamicLinkRepository = FakeDynamicLinkRepository()
+            val viewModel =
+                viewModel(FakeFeedbackShareRepository(), localRepository, dynamicLinkRepository)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
+            advanceUntilIdle()
+
+            viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
+            advanceUntilIdle()
+
+            assertEquals("hilit://feedback/legacy-token", dynamicLinkRepository.requestedDeepLink)
+            assertEquals(
+                "https://short.link/hilit://feedback/legacy-token",
+                viewModel.state.value.shareLink,
+            )
+            assertEquals(
+                "https://short.link/hilit://feedback/legacy-token",
+                localRepository.getShare(7L)?.link,
+            )
+        }
+
+    @Test
+    fun `모달에서 종료하면 공유를 종료하고 저장된 기록을 지운 뒤 리포트로 돌아간다`() =
+        runTest {
+            val localRepository =
+                FakeFeedbackShareLocalRepository(
+                    mapOf(7L to SavedFeedbackShare("saved-token", "https://short.link/saved")),
+                )
             val repository = FakeFeedbackShareRepository()
             val viewModel = viewModel(repository, localRepository)
             viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
@@ -139,12 +225,13 @@ class GuestFeedbackRequestViewModelTest {
             val effects = mutableListOf<GuestFeedbackRequestEffect>()
             val job = TestScope(dispatcher).launch { viewModel.effect.collect { effects += it } }
 
-            viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
+            viewModel.onIntent(GuestFeedbackRequestIntent.ClickEndShare)
             advanceUntilIdle()
 
             assertTrue(repository.closeCalled)
-            assertNull(localRepository.getToken(7L))
+            assertNull(localRepository.getShare(7L))
             assertFalse(viewModel.state.value.hasActiveShare)
+            assertNull(viewModel.state.value.shareLink)
             assertTrue(effects.any { it is GuestFeedbackRequestEffect.NavigateBack })
             job.cancel()
         }
@@ -182,7 +269,7 @@ class GuestFeedbackRequestViewModelTest {
         }
 
     @Test
-    fun `서버에 이미 활성 링크가 있으면 종료 가능 상태로 바뀐다`() =
+    fun `서버에 이미 활성 링크가 있고 기기에 기록이 없으면 종료만 가능한 상태가 된다`() =
         runTest {
             val repository =
                 FakeFeedbackShareRepository(
@@ -199,7 +286,8 @@ class GuestFeedbackRequestViewModelTest {
             advanceUntilIdle()
 
             assertFalse(viewModel.state.value.submitting)
-            assertTrue(viewModel.state.value.hasActiveShare)
+            assertTrue(viewModel.state.value.endOnlyShare)
+            assertNull(viewModel.state.value.shareLink)
         }
 
     @Test
@@ -225,7 +313,7 @@ class GuestFeedbackRequestViewModelTest {
                 )
             viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
             advanceUntilIdle()
-            localRepository.saveToken(7L, "already-saved")
+            localRepository.saveShare(7L, SavedFeedbackShare("already-saved"))
 
             viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
             advanceUntilIdle()
@@ -269,10 +357,17 @@ class GuestFeedbackRequestViewModelTest {
         dynamicLinkRepository: DynamicLinkRepository = FakeDynamicLinkRepository(),
     ): GuestFeedbackRequestViewModel =
         GuestFeedbackRequestViewModel(
-            CreateFeedbackShareUseCase(repository, localRepository),
+            CreateFeedbackShareUseCase(
+                repository,
+                localRepository,
+                CreateFeedbackShareDynamicLinkUseCase(dynamicLinkRepository),
+            ),
             EndFeedbackShareUseCase(repository, localRepository),
-            GetSavedFeedbackShareTokenUseCase(localRepository),
-            CreateFeedbackShareDynamicLinkUseCase(dynamicLinkRepository),
+            GetSavedFeedbackShareUseCase(localRepository),
+            ResolveSavedFeedbackShareLinkUseCase(
+                localRepository,
+                CreateFeedbackShareDynamicLinkUseCase(dynamicLinkRepository),
+            ),
         )
 }
 
@@ -283,10 +378,14 @@ private class FakeFeedbackShareRepository(
     var closeCalled: Boolean = false
         private set
 
+    var createCalled: Boolean = false
+        private set
+
     override suspend fun createShare(
         sessionId: Long,
         axes: List<GuestFeedbackAxisCode>,
     ): String {
+        createCalled = true
         createFailure?.let { throw it }
         return token
     }
@@ -310,20 +409,20 @@ private class FakeDynamicLinkRepository(
 }
 
 private class FakeFeedbackShareLocalRepository(
-    initialTokens: Map<Long, String> = emptyMap(),
+    initialShares: Map<Long, SavedFeedbackShare> = emptyMap(),
 ) : FeedbackShareLocalRepository {
-    private val tokens = initialTokens.toMutableMap()
+    private val shares = initialShares.toMutableMap()
 
-    override suspend fun getToken(sessionId: Long): String? = tokens[sessionId]
+    override suspend fun getShare(sessionId: Long): SavedFeedbackShare? = shares[sessionId]
 
-    override suspend fun saveToken(
+    override suspend fun saveShare(
         sessionId: Long,
-        token: String,
+        share: SavedFeedbackShare,
     ) {
-        tokens[sessionId] = token
+        shares[sessionId] = share
     }
 
-    override suspend fun clearToken(sessionId: Long) {
-        tokens.remove(sessionId)
+    override suspend fun clearShare(sessionId: Long) {
+        shares.remove(sessionId)
     }
 }
