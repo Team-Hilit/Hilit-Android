@@ -8,6 +8,9 @@ sealed interface SplashIntent : MviIntent {
     /** 화면 진입 시 저장된 세션·프로필 존재 여부를 확인한다. */
     data object Load : SplashIntent
 
+    /** 저장된 세션을 유지하고 자동 이동 없이 로그인 버튼을 표시한다. */
+    data object ShowLogin : SplashIntent
+
     data object ClickKakaoLogin : SplashIntent
 
     data class KakaoLoginSucceeded(

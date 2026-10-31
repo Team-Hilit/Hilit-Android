@@ -59,6 +59,7 @@ private const val KAKAO_LOGIN_BUTTON_ENTER_DURATION_MS = 300
 fun SplashScreen(
     onNavigate: (Any) -> Unit,
     modifier: Modifier = Modifier,
+    autoLogin: Boolean = true,
     viewModel: SplashViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -72,8 +73,8 @@ fun SplashScreen(
                 KakaoLoginClientEntryPoint::class.java,
             ).kakaoLoginClient()
 
-    LaunchedEffect(Unit) {
-        viewModel.onIntent(SplashIntent.Load)
+    LaunchedEffect(autoLogin) {
+        viewModel.onIntent(if (autoLogin) SplashIntent.Load else SplashIntent.ShowLogin)
     }
 
     LaunchedEffect(Unit) {

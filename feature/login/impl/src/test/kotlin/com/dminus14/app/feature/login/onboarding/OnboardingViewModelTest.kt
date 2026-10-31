@@ -506,6 +506,39 @@ class OnboardingViewModelTest {
         }
 
     @Test
+    fun `연차 선택에서 닫기를 누르면 이전 단계로 이동하지 않고 닫기를 요청한다`() =
+        runTest {
+            val viewModel = createViewModel()
+            advanceToExperienceSelection(viewModel)
+            val effect = async { viewModel.effect.first() }
+
+            viewModel.onIntent(OnboardingIntent.CloseClick)
+
+            assertEquals(OnboardingEffect.CloseRequested, effect.await())
+            assertEquals(OnboardingStep.ExperienceSelection, viewModel.state.value.step)
+        }
+
+    @Test
+    fun `가입 확인에서 닫기를 누르면 가입을 제출하지 않고 닫기를 요청한다`() =
+        runTest {
+            val repository = StubUserRepository()
+            val viewModel =
+                OnboardingViewModel(
+                    GetJobListUseCase(repository),
+                    UpdateUserProfileUseCase(repository),
+                )
+            viewModel.onIntent(OnboardingIntent.Load)
+            advanceToRegisterDone(viewModel)
+            val effect = async { viewModel.effect.first() }
+
+            viewModel.onIntent(OnboardingIntent.CloseClick)
+
+            assertEquals(OnboardingEffect.CloseRequested, effect.await())
+            assertEquals(0, repository.updateCallCount)
+            assertEquals(OnboardingStep.RegisterDone, viewModel.state.value.step)
+        }
+
+    @Test
     fun `ContinueClick이 disabled일 때 Effect가 발행되지 않는다`() =
         runTest {
             val viewModel = createViewModel()
@@ -592,7 +625,7 @@ class OnboardingViewModelTest {
         }
 
     @Test
-    fun `ValidationException 이면 step은 유지되고 errorMessage만 설정된다`() =
+    fun `프로필 검증 오류는 현재 단계를 유지하고 사용자에게 오류를 안내한다`() =
         runTest {
             val viewModel =
                 createViewModel(
@@ -603,12 +636,14 @@ class OnboardingViewModelTest {
                         ),
                 )
             advanceToRegisterDone(viewModel)
+            val effect = async { viewModel.effect.first() }
 
             viewModel.onIntent(OnboardingIntent.ContinueClick)
             advanceUntilIdle()
 
             assertEquals(OnboardingStep.RegisterDone, viewModel.state.value.step)
             assertEquals("입력값이 올바르지 않아요.", viewModel.state.value.errorMessage)
+            assertEquals(OnboardingEffect.ShowToast("입력값이 올바르지 않아요."), effect.await())
             assertFalse(viewModel.state.value.isSubmitting)
         }
 

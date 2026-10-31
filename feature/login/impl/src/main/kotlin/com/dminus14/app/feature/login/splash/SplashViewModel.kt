@@ -36,6 +36,10 @@ class SplashViewModel
                     load()
                 }
 
+                SplashIntent.ShowLogin -> {
+                    mvi.dispatch(SplashMutation.LoginRequired)
+                }
+
                 SplashIntent.ClickKakaoLogin -> {
                     mvi.dispatch(SplashMutation.LoginStarted)
                 }

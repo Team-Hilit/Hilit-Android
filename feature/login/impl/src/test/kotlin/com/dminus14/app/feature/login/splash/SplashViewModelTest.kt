@@ -43,6 +43,88 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class SplashViewModelTest {
     @Test
+    fun `로그인 화면을 표시하면 자동 조회와 이동 없이 로그인 버튼을 노출한다`() =
+        runTest {
+            Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+            try {
+                val sessionRepository = FakeSessionRepository(sampleSession)
+                val userRepository = FakeUserRepository(Result.success(sampleUserProfile))
+                val consentRepository = FakeConsentRepository(Result.success(notSubmittedPending))
+                val viewModel =
+                    SplashViewModel(
+                        GetAuthSessionUseCase(sessionRepository),
+                        CheckUserProfileUseCase(userRepository),
+                        LoginWithKakaoUseCase(FakeAuthRepository(Result.success(sampleSession))),
+                        GetPendingConsentListUseCase(consentRepository),
+                    )
+                val receivedEffects = mutableListOf<SplashEffect>()
+                backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                    viewModel.effect.collect(receivedEffects::add)
+                }
+
+                viewModel.onIntent(SplashIntent.ShowLogin)
+                advanceUntilIdle()
+
+                assertTrue(viewModel.state.value.showKakaoLoginButton)
+                assertFalse(viewModel.state.value.isLoading)
+                assertEquals(0, sessionRepository.getCallCount)
+                assertEquals(0, userRepository.getCallCount)
+                assertEquals(0, consentRepository.getCallCount)
+                assertEquals(emptyList<SplashEffect>(), receivedEffects)
+                assertEquals(sampleSession, sessionRepository.getAuthSession())
+            } finally {
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
+    fun `로그인 화면을 표시하면 이전 로그인 로딩을 해제한다`() =
+        runTest {
+            Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+            try {
+                val viewModel =
+                    createViewModel(
+                        session = sampleSession,
+                        pendingResult = Result.success(notSubmittedPending),
+                        profileResult = Result.success(sampleUserProfile),
+                    )
+                viewModel.onIntent(SplashIntent.ClickKakaoLogin)
+                assertTrue(viewModel.state.value.isLoading)
+
+                viewModel.onIntent(SplashIntent.ShowLogin)
+
+                assertFalse(viewModel.state.value.isLoading)
+                assertTrue(viewModel.state.value.showKakaoLoginButton)
+            } finally {
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
+    fun `로그인 화면에서 카카오 로그인을 다시 완료하면 필요한 약관 동의로 이동한다`() =
+        runTest {
+            Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+            try {
+                val viewModel =
+                    createViewModel(
+                        session = sampleSession,
+                        pendingResult = Result.success(notSubmittedPending),
+                        profileResult = Result.success(sampleUserProfile),
+                    )
+                viewModel.onIntent(SplashIntent.ShowLogin)
+                val effect = async { viewModel.effect.first() }
+
+                viewModel.onIntent(SplashIntent.ClickKakaoLogin)
+                viewModel.onIntent(SplashIntent.KakaoLoginSucceeded("synthetic-credential"))
+
+                assertEquals(SplashEffect.RequireConsent, effect.await())
+                assertFalse(viewModel.state.value.isLoading)
+            } finally {
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
     fun `Load 시 세션과 동의 최신·완성된 프로필이 있으면 Ready Effect를 발행한다`() =
         runTest {
             val dispatcher = UnconfinedTestDispatcher(testScheduler)
@@ -643,7 +725,13 @@ class SplashViewModelTest {
     private class FakeSessionRepository(
         private val session: AuthSession?,
     ) : SessionRepository {
-        override suspend fun getAuthSession(): AuthSession? = session
+        var getCallCount: Int = 0
+            private set
+
+        override suspend fun getAuthSession(): AuthSession? {
+            getCallCount += 1
+            return session
+        }
 
         override suspend fun refreshToken(refreshToken: String): AuthSession =
             error("Not used in SplashViewModelTest")
@@ -659,7 +747,13 @@ class SplashViewModelTest {
     private class FakeUserRepository(
         private val result: Result<UserProfile>,
     ) : UserRepository {
-        override suspend fun getUserProfile(): UserProfile = result.getOrThrow()
+        var getCallCount: Int = 0
+            private set
+
+        override suspend fun getUserProfile(): UserProfile {
+            getCallCount += 1
+            return result.getOrThrow()
+        }
 
         override suspend fun updateUserProfile(update: UserProfileUpdate) =
             error("Not used in SplashViewModelTest")
@@ -682,8 +776,13 @@ class SplashViewModelTest {
     private class FakeConsentRepository(
         private val pendingResult: Result<PendingConsentList>,
     ) : ConsentRepository {
-        override suspend fun getPendingConsentList(): PendingConsentList =
-            pendingResult.getOrThrow()
+        var getCallCount: Int = 0
+            private set
+
+        override suspend fun getPendingConsentList(): PendingConsentList {
+            getCallCount += 1
+            return pendingResult.getOrThrow()
+        }
 
         override suspend fun getConsentDocument(
             rawCode: String,
