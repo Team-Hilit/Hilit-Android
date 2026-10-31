@@ -12,10 +12,11 @@ import com.dminus14.app.domain.exception.NetworkUnavailableException
 import com.dminus14.app.domain.exception.ServerException
 import com.dminus14.app.domain.exception.TooManyAttitudeAxesException
 import com.dminus14.app.domain.model.GuestFeedbackAxisCode
-import com.dminus14.app.domain.usecase.CreateFeedbackShareDynamicLinkUseCase
+import com.dminus14.app.domain.model.SavedFeedbackShare
 import com.dminus14.app.domain.usecase.CreateFeedbackShareUseCase
 import com.dminus14.app.domain.usecase.EndFeedbackShareUseCase
-import com.dminus14.app.domain.usecase.GetSavedFeedbackShareTokenUseCase
+import com.dminus14.app.domain.usecase.GetSavedFeedbackShareUseCase
+import com.dminus14.app.domain.usecase.ResolveSavedFeedbackShareLinkUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -32,8 +33,8 @@ class GuestFeedbackRequestViewModel
     constructor(
         private val createFeedbackShare: CreateFeedbackShareUseCase,
         private val endFeedbackShare: EndFeedbackShareUseCase,
-        private val getSavedFeedbackShareToken: GetSavedFeedbackShareTokenUseCase,
-        private val createFeedbackShareDynamicLink: CreateFeedbackShareDynamicLinkUseCase,
+        private val getSavedFeedbackShare: GetSavedFeedbackShareUseCase,
+        private val resolveSavedFeedbackShareLink: ResolveSavedFeedbackShareLinkUseCase,
     ) : MviViewModel<
             GuestFeedbackRequestIntent,
             GuestFeedbackRequestState,
@@ -53,51 +54,80 @@ class GuestFeedbackRequestViewModel
                 }
 
                 is GuestFeedbackRequestIntent.ToggleAxis -> {
-                    toggleAxis(intent.axis)
+                    context.dispatch(GuestFeedbackRequestMutation.AxisToggled(intent.axis))
                 }
 
                 GuestFeedbackRequestIntent.ClickClose -> {
-                    sendEffect(GuestFeedbackRequestEffect.NavigateBack)
+                    context.sendEffect(GuestFeedbackRequestEffect.NavigateBack)
                 }
 
                 GuestFeedbackRequestIntent.ClickSubmit -> {
                     onClickSubmit()
                 }
 
-                GuestFeedbackRequestIntent.ClickCopyLink -> {
-                    copyLink()
+                GuestFeedbackRequestIntent.ClickCopyMessage -> {
+                    copyMessage()
+                }
+
+                GuestFeedbackRequestIntent.ClickShareMessage -> {
+                    shareMessage()
                 }
 
                 GuestFeedbackRequestIntent.DismissShareLinkModal -> {
                     context.dispatch(GuestFeedbackRequestMutation.ShareModalDismissed)
                 }
+
+                GuestFeedbackRequestIntent.ClickEndShare -> {
+                    endShare()
+                }
             }
         }
 
-        /** sessionId 에 저장된 공유 링크 token 이 있으면 하단 버튼을 "피드백 종료하기"로 바꾼다. */
+        /**
+         * 저장된 공유 기록이 있으면 하단 버튼이 재노출로 동작하도록 state 에 싣고, 생성 당시
+         * 선택 항목으로 토글을 복원한다.
+         */
         private fun load() {
             if (sessionId <= 0L) return
             loadJob?.cancel()
             loadJob =
                 context.launch {
-                    val savedToken = getSavedFeedbackShareToken(sessionId)
+                    val saved = getSavedFeedbackShare(sessionId) ?: return@launch
                     currentCoroutineContext().ensureActive()
-                    val hasSavedShare = savedToken != null
-                    context.dispatch(
-                        GuestFeedbackRequestMutation.SavedShareChecked(hasSavedShare),
-                    )
+                    context.dispatch(GuestFeedbackRequestMutation.SavedShareLoaded(saved))
                 }
         }
 
-        private fun toggleAxis(axis: GuestFeedbackAxisCode) {
-            context.dispatch(GuestFeedbackRequestMutation.AxisToggled(axis))
+        private fun onClickSubmit() {
+            val current = state.value
+            when {
+                current.endOnlyShare -> endShare()
+                current.hasActiveShare -> openSavedShare()
+                else -> createShare()
+            }
         }
 
-        private fun onClickSubmit() {
-            if (state.value.hasActiveShare) {
-                endShare()
-            } else {
-                createShare()
+        /**
+         * 이미 활성 링크가 있을 때의 하단 버튼 동작. 서버에 다시 만들지 않고 기기에 저장된 링크로
+         * 첫 생성과 같은 모달을 띄운다. 기록이 사라진 경우에만 새로 생성한다.
+         */
+        private fun openSavedShare() {
+            if (state.value.submitting) return
+            loadJob?.cancel()
+            context.dispatch(GuestFeedbackRequestMutation.SubmissionStarted)
+            context.launch {
+                resolveSavedFeedbackShareLink(sessionId)
+                    .onSuccess { saved ->
+                        currentCoroutineContext().ensureActive()
+                        if (saved == null) {
+                            context.dispatch(GuestFeedbackRequestMutation.SavedShareMissing)
+                            createShare()
+                        } else {
+                            context.dispatch(GuestFeedbackRequestMutation.ShareReady(saved))
+                        }
+                    }.onFailure { error ->
+                        handleCommonError(error)
+                    }
             }
         }
 
@@ -108,12 +138,9 @@ class GuestFeedbackRequestViewModel
             context.dispatch(GuestFeedbackRequestMutation.SubmissionStarted)
             context.launch {
                 createFeedbackShare(sessionId, current.selectedAxes.toList())
-                    .onSuccess { token ->
+                    .onSuccess { saved ->
                         currentCoroutineContext().ensureActive()
-                        // 아래는 항상 성공한다(동적 링크 생성 실패 시 원시 딥링크로 self-heal).
-                        val shareLink = createFeedbackShareDynamicLink(token).getOrThrow()
-                        currentCoroutineContext().ensureActive()
-                        context.dispatch(GuestFeedbackRequestMutation.ShareCreated(shareLink))
+                        context.dispatch(GuestFeedbackRequestMutation.ShareReady(saved))
                     }.onFailure { error ->
                         handleCreateShareFailure(error)
                     }
@@ -132,7 +159,7 @@ class GuestFeedbackRequestViewModel
                 is InvalidAttitudeAxisException,
                 -> {
                     context.dispatch(GuestFeedbackRequestMutation.SubmissionFailed)
-                    sendEffect(GuestFeedbackRequestEffect.ShowToast(error.message))
+                    context.sendEffect(GuestFeedbackRequestEffect.ShowToast(error.message))
                 }
 
                 is FeedbackShareAlreadyExistsException -> {
@@ -141,8 +168,8 @@ class GuestFeedbackRequestViewModel
 
                 is InterviewSessionNotFoundException -> {
                     context.dispatch(GuestFeedbackRequestMutation.SubmissionFailed)
-                    sendEffect(GuestFeedbackRequestEffect.ShowToast(error.message))
-                    sendEffect(GuestFeedbackRequestEffect.NavigateBack)
+                    context.sendEffect(GuestFeedbackRequestEffect.ShowToast(error.message))
+                    context.sendEffect(GuestFeedbackRequestEffect.NavigateBack)
                 }
 
                 else -> {
@@ -153,22 +180,18 @@ class GuestFeedbackRequestViewModel
 
         /**
          * 서버에는 이미 활성 공유 링크가 있는 상태(생성 API 는 충돌 시 기존 token 을 돌려주지
-         * 않음). 이 기기에 그 링크를 만들 때 저장해둔 실제 token 이 남아있다면 그걸로 딥링크를
-         * 다시 만들어 방금 생성에 성공한 것과 똑같이 보여준다. 로컬에 token 이 전혀 없으면(다른
-         * 기기에서 만들었거나 앱 데이터가 지워진 경우) 재구성할 수 없으므로 기존처럼 종료 가능
-         * 상태로만 맞추고 안내한다.
+         * 않음). 이 기기에 저장된 기록이 남아있다면 그 링크로 방금 생성에 성공한 것과 똑같이
+         * 보여준다. 기록이 전혀 없으면(다른 기기에서 만들었거나 앱 데이터가 지워진 경우)
+         * 재구성할 수 없으므로 안내만 한다.
          */
         private suspend fun handleAlreadyExistsFailure(error: FeedbackShareAlreadyExistsException) {
-            val savedToken = getSavedFeedbackShareToken(sessionId)
+            val saved = resolveSavedFeedbackShareLink(sessionId).getOrNull()
             currentCoroutineContext().ensureActive()
-            if (savedToken != null) {
-                // 아래는 항상 성공한다(동적 링크 생성 실패 시 원시 딥링크로 self-heal).
-                val shareLink = createFeedbackShareDynamicLink(savedToken).getOrThrow()
-                currentCoroutineContext().ensureActive()
-                context.dispatch(GuestFeedbackRequestMutation.ShareCreated(shareLink))
+            if (saved != null) {
+                context.dispatch(GuestFeedbackRequestMutation.ShareReady(saved))
             } else {
-                context.dispatch(GuestFeedbackRequestMutation.ExistingShareFound)
-                sendEffect(GuestFeedbackRequestEffect.ShowToast(error.message))
+                context.dispatch(GuestFeedbackRequestMutation.EndOnlyShareFound)
+                context.sendEffect(GuestFeedbackRequestEffect.ShowToast(error.message))
             }
         }
 
@@ -181,8 +204,10 @@ class GuestFeedbackRequestViewModel
                     .onSuccess {
                         currentCoroutineContext().ensureActive()
                         context.dispatch(GuestFeedbackRequestMutation.ShareEnded)
-                        sendEffect(GuestFeedbackRequestEffect.ShowToast("피드백 요청을 종료했어요."))
-                        sendEffect(GuestFeedbackRequestEffect.NavigateBack)
+                        context.sendEffect(
+                            GuestFeedbackRequestEffect.ShowToast("피드백 요청을 종료했어요."),
+                        )
+                        context.sendEffect(GuestFeedbackRequestEffect.NavigateBack)
                     }.onFailure { error ->
                         handleCommonError(error)
                     }
@@ -208,22 +233,43 @@ class GuestFeedbackRequestViewModel
             }
         }
 
-        private fun copyLink() {
-            val link = state.value.shareLink ?: return
-            sendEffect(GuestFeedbackRequestEffect.CopyToClipboard(link))
-            context.dispatch(GuestFeedbackRequestMutation.LinkCopied)
+        /**
+         * 복사 후에는 안내를 2초 보여주고 모달만 닫는다. 화면을 벗어나지 않으므로 사용자가
+         * 바로 다시 복사하거나 공유할 수 있다.
+         */
+        private fun copyMessage() {
+            val message = shareMessageOrNull() ?: return
+            context.sendEffect(GuestFeedbackRequestEffect.CopyToClipboard(message))
+            context.dispatch(GuestFeedbackRequestMutation.MessageCopied)
             context.launch {
                 delay(COPIED_NOTICE_DURATION_MS)
-                sendEffect(GuestFeedbackRequestEffect.NavigateBack)
+                context.dispatch(GuestFeedbackRequestMutation.CopiedNoticeFinished)
             }
+        }
+
+        /**
+         * 공유 시트는 사용자가 취소하고 돌아올 수 있으므로 모달을 그대로 둔다. 복사와 달리
+         * 리포트로 자동 복귀시키지 않는다.
+         */
+        private fun shareMessage() {
+            val message = shareMessageOrNull() ?: return
+            context.sendEffect(GuestFeedbackRequestEffect.ShareText(message))
+        }
+
+        /** 복사와 공유가 똑같은 텍스트를 쓰도록 한 곳에서만 조립한다. */
+        private fun shareMessageOrNull(): String? {
+            val current = state.value
+            val link = current.shareLink ?: return null
+            return buildGuestFeedbackShareMessage(current.messageAxes, link)
         }
     }
 
 private sealed interface GuestFeedbackRequestMutation {
     data object ShareModalDismissed : GuestFeedbackRequestMutation
 
-    data class SavedShareChecked(
-        val exists: Boolean,
+    /** 기기에 저장된 기록을 불러와 토글까지 복원한다. */
+    data class SavedShareLoaded(
+        val saved: SavedFeedbackShare,
     ) : GuestFeedbackRequestMutation
 
     data class AxisToggled(
@@ -234,15 +280,22 @@ private sealed interface GuestFeedbackRequestMutation {
 
     data object SubmissionFailed : GuestFeedbackRequestMutation
 
-    data class ShareCreated(
-        val link: String,
+    /** 생성·재노출·충돌 복구가 모두 같은 결과(링크 있는 기록)로 끝난다. */
+    data class ShareReady(
+        val saved: SavedFeedbackShare,
     ) : GuestFeedbackRequestMutation
 
-    data object ExistingShareFound : GuestFeedbackRequestMutation
+    /** 저장돼 있다고 봤던 기록이 사라진 경우. 곧바로 새로 생성한다. */
+    data object SavedShareMissing : GuestFeedbackRequestMutation
+
+    /** 서버에는 활성 링크가 있으나 이 기기에서 링크를 꺼낼 수 없는 상태. */
+    data object EndOnlyShareFound : GuestFeedbackRequestMutation
 
     data object ShareEnded : GuestFeedbackRequestMutation
 
-    data object LinkCopied : GuestFeedbackRequestMutation
+    data object MessageCopied : GuestFeedbackRequestMutation
+
+    data object CopiedNoticeFinished : GuestFeedbackRequestMutation
 }
 
 private object GuestFeedbackRequestReducer :
@@ -256,14 +309,22 @@ private object GuestFeedbackRequestReducer :
                 state.copy(shareLink = null)
             }
 
-            is GuestFeedbackRequestMutation.SavedShareChecked -> {
-                state.copy(hasActiveShare = mutation.exists)
+            is GuestFeedbackRequestMutation.SavedShareLoaded -> {
+                state.copy(
+                    savedShare = mutation.saved,
+                    selectedAxes =
+                        mutation.saved.axes
+                            .takeIf { it.isNotEmpty() }
+                            ?.toSet()
+                            ?: state.selectedAxes,
+                )
             }
 
             is GuestFeedbackRequestMutation.AxisToggled -> {
                 val axes = state.selectedAxes
                 val next =
                     if (mutation.axis in axes) {
+                        // 최소 1개는 유지한다(서버 계약 1~5개).
                         if (axes.size <= 1) axes else axes - mutation.axis
                     } else {
                         axes + mutation.axis
@@ -279,24 +340,37 @@ private object GuestFeedbackRequestReducer :
                 state.copy(submitting = false)
             }
 
-            is GuestFeedbackRequestMutation.ShareCreated -> {
+            is GuestFeedbackRequestMutation.ShareReady -> {
                 state.copy(
                     submitting = false,
-                    shareLink = mutation.link,
-                    hasActiveShare = true,
+                    savedShare = mutation.saved,
+                    shareLink = mutation.saved.link,
                 )
             }
 
-            GuestFeedbackRequestMutation.ExistingShareFound -> {
-                state.copy(submitting = false, hasActiveShare = true)
+            GuestFeedbackRequestMutation.SavedShareMissing -> {
+                state.copy(submitting = false, savedShare = null)
+            }
+
+            GuestFeedbackRequestMutation.EndOnlyShareFound -> {
+                state.copy(submitting = false, endOnlyShare = true)
             }
 
             GuestFeedbackRequestMutation.ShareEnded -> {
-                state.copy(submitting = false, hasActiveShare = false)
+                state.copy(
+                    submitting = false,
+                    savedShare = null,
+                    endOnlyShare = false,
+                    shareLink = null,
+                )
             }
 
-            GuestFeedbackRequestMutation.LinkCopied -> {
-                state.copy(linkCopied = true)
+            GuestFeedbackRequestMutation.MessageCopied -> {
+                state.copy(messageCopied = true)
+            }
+
+            GuestFeedbackRequestMutation.CopiedNoticeFinished -> {
+                state.copy(messageCopied = false, shareLink = null)
             }
         }
 }
