@@ -7,6 +7,10 @@ import kotlinx.serialization.Serializable
 @Serializable
 data object Splash : NavKey
 
+/** 자동 로그인 검사 없이 로그인 버튼을 표시하는 화면 route */
+@Serializable
+data object Login : NavKey
+
 /** 약관 동의 화면 route */
 @Serializable
 data object Term : NavKey

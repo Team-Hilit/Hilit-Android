@@ -1,5 +1,6 @@
 package com.dminus14.app.feature.login.onboarding
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -20,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
@@ -36,6 +38,7 @@ import com.dminus14.designsystem.component.progressbar.HilitProgressBar
 import com.dminus14.designsystem.component.topbar.HilitIconTopBar
 import com.dminus14.designsystem.component.topbar.TopBarType
 import com.dminus14.designsystem.theme.HilitTheme
+import kotlinx.coroutines.flow.first
 
 private val ContentHorizontalPadding = 20.dp
 private val IndicatorHorizontalPadding = 20.dp
@@ -54,17 +57,33 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    BackHandler {
+        viewModel.onIntent(OnboardingIntent.CloseClick)
+    }
 
     LaunchedEffect(Unit) {
         viewModel.onIntent(OnboardingIntent.Load)
     }
 
     LaunchedEffect(Unit) {
-        viewModel.effect.collect { effect ->
+        viewModel.effect.first { effect ->
             when (effect) {
-                OnboardingEffect.CloseRequested -> onClose()
-                OnboardingEffect.Completed -> onNavigate(Home)
+                OnboardingEffect.CloseRequested -> {
+                    onClose()
+                }
+
+                OnboardingEffect.Completed -> {
+                    onNavigate(Home)
+                }
+
+                is OnboardingEffect.ShowToast -> {
+                    Toast.makeText(context, effect.message, Toast.LENGTH_LONG).show()
+                }
             }
+            // 닫은 화면의 늦은 제출 결과가 추가 이동을 유발하지 않도록 수집을 끝낸다.
+            effect == OnboardingEffect.CloseRequested
         }
     }
 
@@ -83,10 +102,6 @@ internal fun OnboardingContent(
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-
-    BackHandler {
-        onIntent(OnboardingIntent.PreviousClick)
-    }
 
     Column(
         modifier =

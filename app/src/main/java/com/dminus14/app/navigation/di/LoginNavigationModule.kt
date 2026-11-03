@@ -2,7 +2,7 @@ package com.dminus14.app.navigation.di
 
 import androidx.navigation3.runtime.EntryProviderScope
 import com.dminus14.app.feature.home.api.Home
-import com.dminus14.app.feature.login.api.Splash
+import com.dminus14.app.feature.login.api.Login
 import com.dminus14.app.feature.login.onboarding.onboardingEntryBuilder
 import com.dminus14.app.feature.login.permission.permissionConsentDeniedEntryBuilder
 import com.dminus14.app.feature.login.permission.permissionConsentEntryBuilder
@@ -26,14 +26,14 @@ object LoginNavigationModule {
             splashEntryBuilder(onNavigate = navigator::replaceAll)
             termEntryBuilder(
                 onNavigate = navigator::goTo,
-                onClose = { navigator.replaceAll(Splash) },
+                onClose = { navigator.replaceAll(Login) },
             )
             permissionConsentEntryBuilder(onNavigate = navigator::replaceAll)
             permissionConsentDeniedEntryBuilder(onHome = { navigator.replaceAll(Home) })
             suspensionNoticeEntryBuilder(onHome = { navigator.replaceAll(Home) })
             onboardingEntryBuilder(
                 onNavigate = navigator::replaceAll,
-                onClose = { navigator.replaceAll(Splash) },
+                onClose = { navigator.replaceAll(Login) },
             )
         }
 }
