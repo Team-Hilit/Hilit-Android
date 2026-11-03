@@ -1,0 +1,3 @@
+[submodule "shared-docs"]
+	path = shared-docs
+	url = https://github.com/Team-Hilit/shared-docs.git
