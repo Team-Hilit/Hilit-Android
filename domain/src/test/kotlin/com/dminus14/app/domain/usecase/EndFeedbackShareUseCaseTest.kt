@@ -3,6 +3,7 @@ package com.dminus14.app.domain.usecase
 import com.dminus14.app.domain.exception.FeedbackShareNotFoundException
 import com.dminus14.app.domain.exception.InvalidFeedbackShareStatusException
 import com.dminus14.app.domain.model.GuestFeedbackAxisCode
+import com.dminus14.app.domain.model.SavedFeedbackShare
 import com.dminus14.app.domain.repository.FeedbackShareLocalRepository
 import com.dminus14.app.domain.repository.FeedbackShareRepository
 import kotlinx.coroutines.runBlocking
@@ -12,19 +13,25 @@ import org.junit.Test
 
 class EndFeedbackShareUseCaseTest {
     @Test
-    fun `종료 성공 시 저장된 token 을 지운다`() {
-        val localRepository = FakeFeedbackShareLocalRepository(mapOf(7L to "saved-token"))
+    fun `종료 성공 시 저장된 공유 기록을 지운다`() {
+        val localRepository =
+            FakeFeedbackShareLocalRepository(
+                mapOf(7L to SavedFeedbackShare("saved-token")),
+            )
         val useCase = EndFeedbackShareUseCase(FakeFeedbackShareRepository(), localRepository)
 
         val actual = runBlocking { useCase(7L) }
 
         assertTrue(actual.isSuccess)
-        assertEquals(null, runBlocking { localRepository.getToken(7L) })
+        assertEquals(null, runBlocking { localRepository.getShare(7L)?.token })
     }
 
     @Test
-    fun `서버에 링크가 이미 없으면 성공으로 취급하고 저장된 token 을 지운다`() {
-        val localRepository = FakeFeedbackShareLocalRepository(mapOf(7L to "saved-token"))
+    fun `서버에 링크가 이미 없으면 성공으로 취급하고 저장된 공유 기록을 지운다`() {
+        val localRepository =
+            FakeFeedbackShareLocalRepository(
+                mapOf(7L to SavedFeedbackShare("saved-token")),
+            )
         val repository =
             FakeFeedbackShareRepository(
                 closeFailure =
@@ -38,12 +45,15 @@ class EndFeedbackShareUseCaseTest {
         val actual = runBlocking { useCase(7L) }
 
         assertTrue(actual.isSuccess)
-        assertEquals(null, runBlocking { localRepository.getToken(7L) })
+        assertEquals(null, runBlocking { localRepository.getShare(7L)?.token })
     }
 
     @Test
-    fun `이미 지원하지 않는 상태 전환이면 성공으로 취급하고 저장된 token 을 지운다`() {
-        val localRepository = FakeFeedbackShareLocalRepository(mapOf(7L to "saved-token"))
+    fun `이미 지원하지 않는 상태 전환이면 성공으로 취급하고 저장된 공유 기록을 지운다`() {
+        val localRepository =
+            FakeFeedbackShareLocalRepository(
+                mapOf(7L to SavedFeedbackShare("saved-token")),
+            )
         val repository =
             FakeFeedbackShareRepository(
                 closeFailure =
@@ -57,19 +67,22 @@ class EndFeedbackShareUseCaseTest {
         val actual = runBlocking { useCase(7L) }
 
         assertTrue(actual.isSuccess)
-        assertEquals(null, runBlocking { localRepository.getToken(7L) })
+        assertEquals(null, runBlocking { localRepository.getShare(7L)?.token })
     }
 
     @Test
-    fun `그 외 오류는 실패로 전달하고 저장된 token 을 유지한다`() {
-        val localRepository = FakeFeedbackShareLocalRepository(mapOf(7L to "saved-token"))
+    fun `그 외 오류는 실패로 전달하고 저장된 공유 기록을 유지한다`() {
+        val localRepository =
+            FakeFeedbackShareLocalRepository(
+                mapOf(7L to SavedFeedbackShare("saved-token")),
+            )
         val repository = FakeFeedbackShareRepository(closeFailure = IllegalStateException("서버 오류"))
         val useCase = EndFeedbackShareUseCase(repository, localRepository)
 
         val actual = runBlocking { useCase(7L) }
 
         assertTrue(actual.isFailure)
-        assertEquals("saved-token", runBlocking { localRepository.getToken(7L) })
+        assertEquals("saved-token", runBlocking { localRepository.getShare(7L)?.token })
     }
 
     private class FakeFeedbackShareRepository(
@@ -86,21 +99,21 @@ class EndFeedbackShareUseCaseTest {
     }
 
     private class FakeFeedbackShareLocalRepository(
-        initialTokens: Map<Long, String> = emptyMap(),
+        initialShares: Map<Long, SavedFeedbackShare> = emptyMap(),
     ) : FeedbackShareLocalRepository {
-        private val tokens = initialTokens.toMutableMap()
+        private val shares = initialShares.toMutableMap()
 
-        override suspend fun getToken(sessionId: Long): String? = tokens[sessionId]
+        override suspend fun getShare(sessionId: Long): SavedFeedbackShare? = shares[sessionId]
 
-        override suspend fun saveToken(
+        override suspend fun saveShare(
             sessionId: Long,
-            token: String,
+            share: SavedFeedbackShare,
         ) {
-            tokens[sessionId] = token
+            shares[sessionId] = share
         }
 
-        override suspend fun clearToken(sessionId: Long) {
-            tokens.remove(sessionId)
+        override suspend fun clearShare(sessionId: Long) {
+            shares.remove(sessionId)
         }
     }
 }

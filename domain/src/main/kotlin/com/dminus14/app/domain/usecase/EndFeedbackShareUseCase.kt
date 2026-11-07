@@ -14,7 +14,7 @@ import javax.inject.Inject
  * 예: 링크를 못 찾음 또는 이미 비공개)로 응답하면, 저장된 token 이 가리키는 목표(피드백 요청이
  * 더 이상 활성이 아님)는 이미 달성된 것이므로 실패로 취급하지 않고 성공과 동일하게 처리한다.
  *
- * 성공하면 [FeedbackShareLocalRepository] 에 저장된 token 도 함께 지운다.
+ * 성공하면 [FeedbackShareLocalRepository] 에 저장된 공유 기록(token·링크·선택 항목)도 함께 지운다.
  */
 class EndFeedbackShareUseCase
     @Inject
@@ -31,6 +31,6 @@ class EndFeedbackShareUseCase
                 } catch (_: InvalidFeedbackShareStatusException) {
                     Unit
                 }
-                feedbackShareLocalRepository.clearToken(sessionId)
+                feedbackShareLocalRepository.clearShare(sessionId)
             }
     }
