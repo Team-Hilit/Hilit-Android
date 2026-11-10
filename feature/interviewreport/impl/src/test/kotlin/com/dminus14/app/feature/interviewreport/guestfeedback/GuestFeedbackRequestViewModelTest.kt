@@ -13,6 +13,7 @@ import com.dminus14.app.domain.usecase.CreateFeedbackShareUseCase
 import com.dminus14.app.domain.usecase.EndFeedbackShareUseCase
 import com.dminus14.app.domain.usecase.GetSavedFeedbackShareUseCase
 import com.dminus14.app.domain.usecase.ResolveSavedFeedbackShareLinkUseCase
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -292,6 +293,29 @@ class GuestFeedbackRequestViewModelTest {
         }
 
     @Test
+    fun `생성 응답을 기다리는 동안 바꾼 토글은 반영되지 않고 생성된 항목으로 잠긴다`() =
+        runTest {
+            val createResponse = CompletableDeferred<Unit>()
+            val repository = FakeFeedbackShareRepository(createResponse = createResponse)
+            val viewModel = viewModel(repository)
+            viewModel.onIntent(GuestFeedbackRequestIntent.Load(7L))
+            // 시선만 남기고 생성을 요청한다.
+            (GuestFeedbackAxisCode.entries - GuestFeedbackAxisCode.GAZE).forEach { axis ->
+                viewModel.onIntent(GuestFeedbackRequestIntent.ToggleAxis(axis))
+            }
+            viewModel.onIntent(GuestFeedbackRequestIntent.ClickSubmit)
+            advanceUntilIdle()
+
+            viewModel.onIntent(GuestFeedbackRequestIntent.ToggleAxis(GuestFeedbackAxisCode.VOICE))
+            createResponse.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(GuestFeedbackAxisCode.GAZE), repository.requestedAxes)
+            assertEquals(setOf(GuestFeedbackAxisCode.GAZE), viewModel.state.value.selectedAxes)
+            assertTrue(viewModel.state.value.axesLocked)
+        }
+
+    @Test
     fun `링크를 생성한 뒤 하단 버튼은 저장된 링크로 멘트를 복사한다`() =
         runTest {
             // 모달을 다시 띄우지 않고 바로 복사한다(#219).
@@ -465,6 +489,8 @@ class GuestFeedbackRequestViewModelTest {
 private class FakeFeedbackShareRepository(
     private val token: String = "token",
     private val createFailure: Throwable? = null,
+    /** 지정하면 완료될 때까지 생성 응답을 지연시킨다. */
+    private val createResponse: CompletableDeferred<Unit>? = null,
 ) : FeedbackShareRepository {
     var closeCalled: Boolean = false
         private set
@@ -472,11 +498,17 @@ private class FakeFeedbackShareRepository(
     var createCalled: Boolean = false
         private set
 
+    /** 생성 요청 시점에 서버로 보낸 평가 항목. */
+    var requestedAxes: List<GuestFeedbackAxisCode>? = null
+        private set
+
     override suspend fun createShare(
         sessionId: Long,
         axes: List<GuestFeedbackAxisCode>,
     ): String {
         createCalled = true
+        requestedAxes = axes
+        createResponse?.await()
         createFailure?.let { throw it }
         return token
     }

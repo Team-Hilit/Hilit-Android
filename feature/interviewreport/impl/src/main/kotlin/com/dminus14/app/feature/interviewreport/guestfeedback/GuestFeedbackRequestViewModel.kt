@@ -92,8 +92,14 @@ class GuestFeedbackRequestViewModel
                 }
         }
 
-        /** 생성 이후에는 바꿔도 링크에 반영되지 않으므로 막고 이유를 알린다(#219). */
+        /**
+         * 생성 이후에는 바꿔도 링크에 반영되지 않으므로 막고 이유를 알린다(#219).
+         *
+         * 생성 요청 중에도 막는다. 서버에는 요청 시점의 항목이 등록되므로, 응답을 기다리는 동안
+         * 바꾼 토글은 링크와 어긋난 채 잠기게 된다. 아직 생성 전이라 잠금 안내는 띄우지 않는다.
+         */
         private fun toggleAxis(axis: GuestFeedbackAxisCode) {
+            if (state.value.submitting) return
             if (state.value.axesLocked) {
                 context.sendEffect(GuestFeedbackRequestEffect.ShowToast(AXES_LOCKED_MESSAGE))
                 return
@@ -354,10 +360,12 @@ private object GuestFeedbackRequestReducer :
             }
 
             is GuestFeedbackRequestMutation.ShareReady -> {
+                // 잠기는 토글이 실제 링크에 등록된 항목과 같도록 생성 결과로 맞춘다(#219).
                 state.copy(
                     submitting = false,
                     savedShare = mutation.saved,
                     shareLink = mutation.saved.link,
+                    selectedAxes = restoredAxes(mutation.saved, state.selectedAxes),
                 )
             }
 
