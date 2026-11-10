@@ -315,7 +315,7 @@ class SplashViewModelTest {
     // 바로 위 "이름이 없으면 RequireOnboarding" 테스트가 대체한다.
 
     @Test
-    fun `Load 시 세션은 있지만 동의 조회 네트워크 오류면 ShowNetworkErrorAndExit를 발행한다`() =
+    fun `Load 시 세션은 있지만 동의 조회 네트워크 오류면 전역 이벤트 없이 앱 시작 판정 실패 상태가 된다`() =
         runTest {
             val dispatcher = UnconfinedTestDispatcher(testScheduler)
             Dispatchers.setMain(dispatcher)
@@ -331,12 +331,18 @@ class SplashViewModelTest {
                     )
                 val receivedEffects = mutableListOf<SplashEffect>()
                 backgroundScope.launch { viewModel.effect.collect(receivedEffects::add) }
-                val globalEvent =
-                    async(start = CoroutineStart.UNDISPATCHED) { GlobalErrorHandler.events.first() }
+                val globalEvents = mutableListOf<GlobalAppEvent>()
+                backgroundScope.launch(dispatcher) {
+                    GlobalErrorHandler.events.collect { globalEvents.add(it.event) }
+                }
 
                 viewModel.onIntent(SplashIntent.Load)
+                advanceUntilIdle()
 
-                assertEquals(GlobalAppEvent.ShowNetworkErrorAndExit, globalEvent.await().event)
+                assertTrue(viewModel.state.value.isLaunchCheckFailed)
+                assertFalse(viewModel.state.value.showKakaoLoginButton)
+                assertFalse(viewModel.state.value.isLoading)
+                assertEquals(emptyList<GlobalAppEvent>(), globalEvents)
                 assertEquals(emptyList<SplashEffect>(), receivedEffects)
             } finally {
                 Dispatchers.resetMain()
@@ -344,7 +350,7 @@ class SplashViewModelTest {
         }
 
     @Test
-    fun `Load 시 세션은 있지만 동의 조회 서버 오류면 ShowServerErrorAndExit를 발행한다`() =
+    fun `Load 시 세션은 있지만 동의 조회 서버 오류면 전역 이벤트 없이 앱 시작 판정 실패 상태가 된다`() =
         runTest {
             val dispatcher = UnconfinedTestDispatcher(testScheduler)
             Dispatchers.setMain(dispatcher)
@@ -357,12 +363,18 @@ class SplashViewModelTest {
                     )
                 val receivedEffects = mutableListOf<SplashEffect>()
                 backgroundScope.launch { viewModel.effect.collect(receivedEffects::add) }
-                val globalEvent =
-                    async(start = CoroutineStart.UNDISPATCHED) { GlobalErrorHandler.events.first() }
+                val globalEvents = mutableListOf<GlobalAppEvent>()
+                backgroundScope.launch(dispatcher) {
+                    GlobalErrorHandler.events.collect { globalEvents.add(it.event) }
+                }
 
                 viewModel.onIntent(SplashIntent.Load)
+                advanceUntilIdle()
 
-                assertEquals(GlobalAppEvent.ShowServerErrorAndExit, globalEvent.await().event)
+                assertTrue(viewModel.state.value.isLaunchCheckFailed)
+                assertFalse(viewModel.state.value.showKakaoLoginButton)
+                assertFalse(viewModel.state.value.isLoading)
+                assertEquals(emptyList<GlobalAppEvent>(), globalEvents)
                 assertEquals(emptyList<SplashEffect>(), receivedEffects)
             } finally {
                 Dispatchers.resetMain()
