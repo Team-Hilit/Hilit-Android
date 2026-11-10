@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,25 +27,26 @@ import androidx.compose.ui.unit.dp
 import com.dminus14.app.domain.model.GuestFeedbackAxisCode
 import com.dminus14.designsystem.component.button.HilitButtonType
 import com.dminus14.designsystem.component.button.HilitFixedBottomButton
+import com.dminus14.designsystem.component.button.HilitFixedBottomDualButton
+import com.dminus14.designsystem.component.button.HilitFixedBottomDualButtonType
 import com.dminus14.designsystem.component.icon.HilitIcon
 import com.dminus14.designsystem.component.icon.HilitIconAsset
 import com.dminus14.designsystem.component.toggle.HilitToggle
 import com.dminus14.designsystem.theme.HilitTheme
 
-/** 시안(443:8088) 순서에 맞춘 평가 항목 행 정의. */
+/** 시안(443:8088) 순서에 맞춘 평가 항목 행 정의. 표시명은 [label] 을 공유한다. */
 private data class AxisRow(
     val axis: GuestFeedbackAxisCode,
-    val label: String,
     val icon: HilitIconAsset,
 )
 
 private val AXIS_ROWS =
     listOf(
-        AxisRow(GuestFeedbackAxisCode.GAZE, "시선", HilitIconAsset.Eyes),
-        AxisRow(GuestFeedbackAxisCode.EXPRESSION, "표정", HilitIconAsset.Face),
-        AxisRow(GuestFeedbackAxisCode.POSTURE, "자세", HilitIconAsset.Body),
-        AxisRow(GuestFeedbackAxisCode.GESTURE, "손동작", HilitIconAsset.Hand),
-        AxisRow(GuestFeedbackAxisCode.VOICE, "목소리", HilitIconAsset.Voice),
+        AxisRow(GuestFeedbackAxisCode.GAZE, HilitIconAsset.Eyes),
+        AxisRow(GuestFeedbackAxisCode.EXPRESSION, HilitIconAsset.Face),
+        AxisRow(GuestFeedbackAxisCode.POSTURE, HilitIconAsset.Body),
+        AxisRow(GuestFeedbackAxisCode.GESTURE, HilitIconAsset.Hand),
+        AxisRow(GuestFeedbackAxisCode.VOICE, HilitIconAsset.Voice),
     )
 
 /**
@@ -115,23 +117,33 @@ internal fun GuestFeedbackRequestContent(
                 Spacer(Modifier.height(24.dp))
             }
             HilitFixedBottomButton(
-                text = if (state.hasActiveShare) "피드백 종료하기" else "피드백 링크 생성",
+                // 저장된 링크가 있으면 눌렀을 때 서버를 거치지 않고 그 링크로 같은 모달을 다시
+                // 띄우므로, 사용자에게는 첫 생성과 구분되지 않는다. 그래서 레이블도 바꾸지 않는다.
+                // 기기에 기록이 없어 링크를 꺼낼 수 없는 복구 상태에서만 종료 버튼이 된다.
+                text = if (state.endOnlyShare) "피드백 종료하기" else "피드백 링크 생성",
                 // Figma 443:8044 실제 버튼은 짙은 회색(gray900) 배경 + 흰 글자로, Dark 타입(흰 배경)이
                 // 아니라 Light 타입(활성 시 hilitBlack800 배경, 누를 때 gray900)과 일치한다. 이 앱의
                 // 다른 화면 CTA 버튼도 전부 Light 를 쓴다 — Dark 타입은 이 파일에서만 잘못 쓰이고 있었음.
                 type = HilitButtonType.Light,
                 enabled =
                     !state.submitting &&
-                        (state.hasActiveShare || state.selectedAxes.isNotEmpty()),
+                        (
+                            state.endOnlyShare ||
+                                state.hasActiveShare ||
+                                state.selectedAxes.isNotEmpty()
+                        ),
                 onClick = { onIntent(GuestFeedbackRequestIntent.ClickSubmit) },
             )
         }
 
-        if (state.linkCopied) {
-            LinkCopiedModal()
+        if (state.messageCopied) {
+            MessageCopiedModal()
         } else if (state.shareLink != null) {
             LinkCreatedModal(
-                onCopy = { onIntent(GuestFeedbackRequestIntent.ClickCopyLink) },
+                message = buildGuestFeedbackShareMessage(state.messageAxes, state.shareLink),
+                onCopy = { onIntent(GuestFeedbackRequestIntent.ClickCopyMessage) },
+                onShare = { onIntent(GuestFeedbackRequestIntent.ClickShareMessage) },
+                onEndShare = { onIntent(GuestFeedbackRequestIntent.ClickEndShare) },
                 onDismiss = { onIntent(GuestFeedbackRequestIntent.DismissShareLinkModal) },
             )
         }
@@ -157,7 +169,7 @@ private fun AxisToggleRow(
         )
         Spacer(Modifier.size(8.dp))
         Text(
-            text = row.label,
+            text = row.axis.label,
             style = HilitTheme.typography.sub7,
             color = colors.hilitWhite,
             modifier = Modifier.weight(1f),
@@ -166,9 +178,16 @@ private fun AxisToggleRow(
     }
 }
 
+/**
+ * 링크 생성 완료 모달. [message] 는 복사·공유에 실제로 쓰이는 전문이며, 사용자가 무엇을
+ * 보내는지 먼저 확인할 수 있도록 버튼 위에 그대로 노출한다.
+ */
 @Composable
 private fun LinkCreatedModal(
+    message: String,
     onCopy: () -> Unit,
+    onShare: () -> Unit,
+    onEndShare: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalScrim(onDismiss = onDismiss) {
@@ -180,24 +199,13 @@ private fun LinkCreatedModal(
                     .background(HilitTheme.colors.hilitWhite),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                HilitIcon(
-                    asset = HilitIconAsset.Cancel,
-                    contentDescription = "닫기",
-                    tint = HilitTheme.colors.gray500,
-                    modifier =
-                        Modifier
-                            .padding(16.dp)
-                            .size(20.dp)
-                            .clickable(onClick = onDismiss),
-                )
-            }
+            ModalCloseRow(onDismiss = onDismiss)
             Column(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp)
-                        .padding(bottom = 40.dp),
+                        .padding(bottom = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
@@ -213,25 +221,80 @@ private fun LinkCreatedModal(
                     color = HilitTheme.colors.gray900,
                     textAlign = TextAlign.Center,
                 )
+                ShareMessagePreview(message = message)
+                EndShareRow(onEndShare = onEndShare)
             }
-            Text(
-                text = "링크 복사하기",
-                style = HilitTheme.typography.sub7,
-                color = HilitTheme.colors.hilitWhite,
-                textAlign = TextAlign.Center,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .background(HilitTheme.colors.hilitBlack800)
-                        .clickable(onClick = onCopy)
-                        .padding(vertical = 16.dp),
+            HilitFixedBottomDualButton(
+                modifier = Modifier.fillMaxWidth(),
+                leftText = "복사하기",
+                rightText = "공유하기",
+                type = HilitFixedBottomDualButtonType.TwoColor,
+                onLeftClick = onCopy,
+                onRightClick = onShare,
             )
         }
     }
 }
 
 @Composable
-private fun LinkCopiedModal() {
+private fun ModalCloseRow(onDismiss: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        HilitIcon(
+            asset = HilitIconAsset.Cancel,
+            contentDescription = "닫기",
+            tint = HilitTheme.colors.gray500,
+            modifier =
+                Modifier
+                    .padding(16.dp)
+                    .size(20.dp)
+                    .clickable(onClick = onDismiss),
+        )
+    }
+}
+
+/**
+ * 모달 안의 피드백 종료 진입점.
+ *
+ * 종료는 되돌릴 수 없으므로([EndFeedbackShareUseCase][com.dminus14.app.domain.usecase.EndFeedbackShareUseCase])
+ * 복사·공유 버튼과 붙지 않게 떼어 두고 색과 크기도 낮춘다.
+ */
+@Composable
+private fun EndShareRow(onEndShare: () -> Unit) {
+    Text(
+        text = "피드백 종료하기",
+        style = HilitTheme.typography.body6,
+        color = HilitTheme.colors.gray500,
+        textAlign = TextAlign.Center,
+        modifier =
+            Modifier
+                .clickable(onClick = onEndShare)
+                .padding(vertical = 4.dp),
+    )
+}
+
+/** 클립보드·공유 시트로 나갈 전문을 그대로 보여주는 프리뷰. */
+@Composable
+private fun ShareMessagePreview(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = message,
+        style = HilitTheme.typography.body7,
+        // TODO(designsystem): Figma #262A30 대응 토큰 확정 필요, 임시 gray900.
+        color = HilitTheme.colors.gray900,
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(
+                    color = HilitTheme.colors.gray50,
+                    shape = RoundedCornerShape(12.dp),
+                ).padding(horizontal = 14.dp, vertical = 12.dp),
+    )
+}
+
+@Composable
+private fun MessageCopiedModal() {
     ModalScrim(onDismiss = {}) {
         Column(
             modifier =
@@ -249,13 +312,13 @@ private fun LinkCopiedModal() {
                 modifier = Modifier.size(74.dp),
             )
             Text(
-                text = "링크 복사 완료",
+                text = "메시지 복사 완료",
                 style = HilitTheme.typography.body6,
                 color = HilitTheme.colors.gray500,
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = "링크를 지인에게 보내보세요!",
+                text = "지인에게 붙여넣어 보내보세요!",
                 style = HilitTheme.typography.sub4,
                 color = HilitTheme.colors.hilitBlack800,
                 textAlign = TextAlign.Center,
