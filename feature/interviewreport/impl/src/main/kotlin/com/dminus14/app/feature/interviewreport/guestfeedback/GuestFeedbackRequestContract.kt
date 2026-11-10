@@ -21,7 +21,7 @@ sealed interface GuestFeedbackRequestIntent : MviIntent {
 
     /**
      * 하단 버튼 클릭. 저장된 공유 기록이 없으면 서버에 새로 생성하고, 있으면 서버를 거치지 않고
-     * 저장된 링크로 같은 모달을 다시 띄운다(사용자에게는 첫 생성과 같게 보인다).
+     * 저장된 링크를 바로 복사한다(#219).
      */
     data object ClickSubmit : GuestFeedbackRequestIntent
 
@@ -30,12 +30,6 @@ sealed interface GuestFeedbackRequestIntent : MviIntent {
 
     /** 멘트와 링크를 안드로이드 공유 시트로 넘긴다. */
     data object ClickShareMessage : GuestFeedbackRequestIntent
-
-    /** "링크 생성 완료" 모달의 닫기 버튼/배경 탭. 항목선택 화면으로 돌아간다(생성은 이미 끝난 상태). */
-    data object DismissShareLinkModal : GuestFeedbackRequestIntent
-
-    /** "링크 생성 완료" 모달의 피드백 종료. 되돌릴 수 없다. */
-    data object ClickEndShare : GuestFeedbackRequestIntent
 }
 
 @Immutable
@@ -44,11 +38,9 @@ data class GuestFeedbackRequestState(
     val submitting: Boolean = false,
     /** 링크 생성 성공 시의 공유 링크. non-null 이면 "링크 생성 완료" 모달을 노출한다. */
     val shareLink: String? = null,
-    /** 멘트 복사 완료 후의 2초 안내 모달 노출 여부. */
-    val messageCopied: Boolean = false,
     /**
      * sessionId 에 기기 저장된 공유 기록. non-null 이면 하단 버튼이 서버에 새로 생성하지 않고
-     * 이 기록의 링크로 모달을 다시 띄운다.
+     * 이 기록의 링크를 복사한다.
      */
     val savedShare: SavedFeedbackShare? = null,
     /**
@@ -59,6 +51,14 @@ data class GuestFeedbackRequestState(
 ) : MviState {
     /** 종료하지 않은 공유 링크가 이미 있는지 여부. */
     val hasActiveShare: Boolean get() = savedShare != null
+
+    /**
+     * 평가 항목 토글을 더 이상 바꿀 수 없는 상태(#219).
+     *
+     * 생성 API 는 최초 1회만 성공하고 이후에는 409 로 거절되므로, 토글을 바꿔도 실제 링크에는
+     * 반영되지 않는다. 화면과 링크가 어긋나지 않도록 생성 이후에는 조작을 막는다.
+     */
+    val axesLocked: Boolean get() = hasActiveShare || endOnlyShare
 
     /**
      * 요청 멘트에 쓸 평가 항목.
