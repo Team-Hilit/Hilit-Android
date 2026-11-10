@@ -1,5 +1,6 @@
 package com.dminus14.app.data.remote.mapper
 
+import com.dminus14.app.data.remote.authenticator.TokenRefreshServerFailureException
 import com.dminus14.app.data.remote.dto.common.ApiErrorResponseDto
 import com.dminus14.app.domain.exception.CustomException
 import com.dminus14.app.domain.exception.NetworkUnavailableException
@@ -17,6 +18,9 @@ import kotlin.coroutines.cancellation.CancellationException
  *
  * [CancellationException]은 JVM에서 [IllegalStateException]의 하위 타입이므로, domain 예외로
  * 변환하지 않고 그대로 다시 던져 구조적 동시성의 취소 전파를 보존한다.
+ *
+ * 토큰 재발급이 서버 오류로 실패해 [TokenRefreshServerFailureException]으로 전달된 경우는 네트워크
+ * 오류가 아니므로 감싼 [ServerException]을 그대로 돌려준다.
  */
 internal object CommonApiErrorMapper {
     fun map(
@@ -26,6 +30,10 @@ internal object CommonApiErrorMapper {
         when (error) {
             is CancellationException -> {
                 throw error
+            }
+
+            is TokenRefreshServerFailureException -> {
+                error.serverException
             }
 
             is IOException -> {
