@@ -29,6 +29,17 @@ class CreateFeedbackShareDynamicLinkUseCase
             }.recoverCatching { deepLink }
         }
 
+        /**
+         * [link]가 동적 링크 생성 실패로 대체된 원시 딥링크인지 판단한다.
+         *
+         * 대체값은 일시적인 실패의 결과이므로 기기에 저장해 계속 재사용하면 안 된다. 저장하는 쪽은
+         * 이 값으로 걸러, 다음 조회 때 동적 링크를 다시 시도할 수 있게 한다.
+         */
+        fun isFallbackLink(
+            token: String,
+            link: String,
+        ): Boolean = link == buildDeepLink(token)
+
         private fun buildDeepLink(token: String): String =
             "$FEEDBACK_SHARE_DEEP_LINK_SCHEME://$FEEDBACK_SHARE_DEEP_LINK_HOST/$token"
 
