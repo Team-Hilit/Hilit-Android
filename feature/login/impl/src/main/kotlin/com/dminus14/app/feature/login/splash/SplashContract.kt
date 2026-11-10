@@ -8,6 +8,9 @@ sealed interface SplashIntent : MviIntent {
     /** 화면 진입 시 저장된 세션·프로필 존재 여부를 확인한다. */
     data object Load : SplashIntent
 
+    /** 앱 시작 세션 판정 실패 후 판정 전체를 다시 실행한다. */
+    data object ClickRetry : SplashIntent
+
     /** 저장된 세션을 유지하고 자동 이동 없이 로그인 버튼을 표시한다. */
     data object ShowLogin : SplashIntent
 
@@ -25,6 +28,8 @@ sealed interface SplashIntent : MviIntent {
 data class SplashState(
     val showKakaoLoginButton: Boolean = false,
     val isLoading: Boolean = false,
+    /** 앱 시작 세션 판정이 네트워크·서버 오류로 실패해 다시 시도를 노출하는 상태. */
+    val isLaunchCheckFailed: Boolean = false,
 ) : MviState
 
 sealed interface SplashEffect : MviEffect {

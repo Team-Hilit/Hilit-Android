@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +42,8 @@ import com.dminus14.app.feature.login.api.Onboarding
 import com.dminus14.app.feature.login.api.Term
 import com.dminus14.app.feature.login.kakao.KakaoLoginClient
 import com.dminus14.app.feature.login.kakao.KakaoLoginException
+import com.dminus14.designsystem.component.button.HilitMiniButton
+import com.dminus14.designsystem.component.button.HilitMiniButtonColor
 import com.dminus14.designsystem.component.button.KakaoLoginButton
 import com.dminus14.designsystem.component.loading.HilitLoadingIndicator
 import com.dminus14.designsystem.theme.HilitTheme
@@ -110,6 +113,7 @@ fun SplashScreen(
                 viewModel = viewModel,
             )
         },
+        onRetryClick = { viewModel.onIntent(SplashIntent.ClickRetry) },
         modifier = modifier,
     )
 }
@@ -149,6 +153,7 @@ private fun startKakaoLogin(
 private fun SplashContent(
     state: SplashState,
     onKakaoLoginClick: () -> Unit,
+    onRetryClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -163,6 +168,9 @@ private fun SplashContent(
             visible = state.showKakaoLoginButton,
             onKakaoLoginClick = onKakaoLoginClick,
         )
+        if (state.isLaunchCheckFailed) {
+            SplashRetryPrompt(onRetryClick = onRetryClick)
+        }
         if (state.isLoading) {
             SplashLoadingOverlay()
         }
@@ -224,6 +232,31 @@ private fun SplashKakaoLoginSection(
     }
 }
 
+/** 앱 시작 세션 판정 실패 안내. 로고는 그대로 두고 화면 아래쪽에만 얹는다. */
+@Composable
+private fun SplashRetryPrompt(onRetryClick: () -> Unit) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(bottom = 80.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Bottom),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "연결이 불안정해요.",
+            style = HilitTheme.typography.body3,
+            color = HilitTheme.colors.gray500,
+        )
+        HilitMiniButton(
+            onClick = onRetryClick,
+            color = HilitMiniButtonColor.Non,
+        ) {
+            Text(text = "다시 시도")
+        }
+    }
+}
+
 @Composable
 private fun SplashLoadingOverlay() {
     Box(
@@ -260,6 +293,24 @@ private fun SplashContentPreview() {
         SplashContent(
             state = SplashState(showKakaoLoginButton = true),
             onKakaoLoginClick = {},
+            onRetryClick = {},
+        )
+    }
+}
+
+@Preview(
+    showBackground = true,
+    backgroundColor = 0xFFFFFFFF,
+    widthDp = 375,
+    heightDp = 812,
+)
+@Composable
+private fun SplashContentLaunchCheckFailedPreview() {
+    HilitTheme {
+        SplashContent(
+            state = SplashState(isLaunchCheckFailed = true),
+            onKakaoLoginClick = {},
+            onRetryClick = {},
         )
     }
 }

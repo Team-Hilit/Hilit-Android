@@ -36,6 +36,14 @@ class SplashViewModel
                     load()
                 }
 
+                SplashIntent.ClickRetry -> {
+                    // 실패 상태에서만 다시 판정한다. load()가 실패 상태를 동기적으로 해제하므로
+                    // 연속 탭으로 판정이 중복 실행되어 진입 Effect가 두 번 발행되지 않는다.
+                    if (mvi.state.value.isLaunchCheckFailed) {
+                        load()
+                    }
+                }
+
                 SplashIntent.ShowLogin -> {
                     mvi.dispatch(SplashMutation.LoginRequired)
                 }
@@ -67,12 +75,17 @@ class SplashViewModel
             }
         }
 
+        /**
+         * 앱 시작 세션 판정. 네트워크·서버 오류로 실패하면 저장된 토큰을 유지한 채 Splash 실패 상태로
+         * 전환하고, 다시 시도 시 이 판정 전체를 처음부터 다시 실행한다.
+         */
         private fun load() {
+            mvi.dispatch(SplashMutation.LaunchCheckStarted)
             mvi.launch {
                 getAuthSessionUseCase()
                     .onSuccess { session ->
                         if (session != null) {
-                            checkPendingConsent()
+                            checkPendingConsent(isLaunchCheck = true)
                         } else {
                             mvi.dispatch(SplashMutation.LoginRequired)
                         }
@@ -88,7 +101,7 @@ class SplashViewModel
 
                 loginWithKakaoUseCase(credential)
                     .onSuccess {
-                        checkPendingConsent()
+                        checkPendingConsent(isLaunchCheck = false)
                     }.onFailure { throwable ->
                         when (throwable) {
                             is SocialLoginFailedException,
@@ -99,14 +112,14 @@ class SplashViewModel
                             }
 
                             else -> {
-                                handleBootstrapFailure(throwable)
+                                handleBootstrapFailure(throwable, isLaunchCheck = false)
                             }
                         }
                     }
             }
         }
 
-        private suspend fun checkPendingConsent() {
+        private suspend fun checkPendingConsent(isLaunchCheck: Boolean) {
             getPendingConsentListUseCase()
                 .onSuccess { pending ->
                     when (pending.status) {
@@ -119,15 +132,15 @@ class SplashViewModel
                         }
 
                         ConsentPendingStatus.UP_TO_DATE -> {
-                            checkUserProfile()
+                            checkUserProfile(isLaunchCheck)
                         }
                     }
                 }.onFailure { throwable ->
-                    handleBootstrapFailure(throwable)
+                    handleBootstrapFailure(throwable, isLaunchCheck)
                 }
         }
 
-        private suspend fun checkUserProfile() {
+        private suspend fun checkUserProfile(isLaunchCheck: Boolean) {
             checkUserProfileUseCase()
                 .onSuccess { profile ->
                     mvi.dispatch(SplashMutation.BootstrapCompleted)
@@ -145,20 +158,29 @@ class SplashViewModel
                         }
 
                         else -> {
-                            handleBootstrapFailure(error)
+                            handleBootstrapFailure(error, isLaunchCheck)
                         }
                     }
                 }
         }
 
         // 아래 에러 처리 사항은 임시입니다. 공통 처리 기획자 문의 모든 ViewModel 일괄 수정 예정
-        private suspend fun handleBootstrapFailure(error: Throwable) {
+        private suspend fun handleBootstrapFailure(
+            error: Throwable,
+            isLaunchCheck: Boolean,
+        ) {
             mvi.dispatch(SplashMutation.LoginFinished)
             when {
                 isSessionExpired(error) -> {
                     // 세션 만료(재발급 불가)는 오류가 아니라 "미로그인" 상태이므로
                     // 토스트 없이 로그인 버튼만 노출한다.
                     mvi.dispatch(SplashMutation.SessionExpired)
+                }
+
+                isLaunchCheck &&
+                    (error is NetworkUnavailableException || error is ServerException) -> {
+                    // 앱 시작 판정 불가 — 토큰은 유지하고 로그인으로 보내지 않은 채 다시 시도만 노출한다.
+                    mvi.dispatch(SplashMutation.LaunchCheckFailed)
                 }
 
                 error is NetworkUnavailableException -> {
@@ -205,6 +227,10 @@ private sealed interface SplashMutation {
     data object BootstrapCompleted : SplashMutation
 
     data object SessionExpired : SplashMutation
+
+    data object LaunchCheckStarted : SplashMutation
+
+    data object LaunchCheckFailed : SplashMutation
 }
 
 /** 사용자 입력과 비동기 결과를 화면 상태로만 계산한다. */
@@ -236,6 +262,18 @@ private object SplashReducer : MviReducer<SplashState, SplashMutation> {
 
                 SplashMutation.SessionExpired -> {
                     copy(showKakaoLoginButton = true)
+                }
+
+                SplashMutation.LaunchCheckStarted -> {
+                    copy(isLaunchCheckFailed = false)
+                }
+
+                SplashMutation.LaunchCheckFailed -> {
+                    copy(
+                        isLoading = false,
+                        showKakaoLoginButton = false,
+                        isLaunchCheckFailed = true,
+                    )
                 }
             }
         }
