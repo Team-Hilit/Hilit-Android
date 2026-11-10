@@ -8,8 +8,8 @@
 
 | 타입 | 예시 | UI 처리 | 전달 방식 |
 |---|---|---|---|
-| `NetworkUnavailable` | 인터넷 연결 없음, timeout, DNS 실패 | 기본은 앱 종료 Modal. 명시적 복구 계약이 있는 Interview 흐름은 해당 복구 UI 또는 지속 작업 상태 | 기본은 Global Event. 승인된 Interview 복구 흐름은 Feature State/Effect 또는 지속 Android 작업 상태 |
-| `ServerError` | HTTP 500, 502, 503 | 기본은 앱 종료 Modal. 안전한 재시도가 API 계약에 명시된 Interview 흐름은 해당 복구 UI 또는 지속 작업 상태 | 기본은 Global Event. 승인된 Interview 복구 흐름은 Feature State/Effect 또는 지속 Android 작업 상태 |
+| `NetworkUnavailable` | 인터넷 연결 없음, timeout, DNS 실패 | 기본은 앱 종료 Modal. 명시적 복구 계약이 있는 Interview 흐름은 해당 복구 UI 또는 지속 작업 상태. 앱 시작 세션 판정은 Splash 실패 상태와 다시 시도 | 기본은 Global Event. 승인된 Interview 복구 흐름은 Feature State/Effect 또는 지속 Android 작업 상태. 앱 시작 세션 판정은 Splash State |
+| `ServerError` | HTTP 500, 502, 503 | 기본은 앱 종료 Modal. 안전한 재시도가 API 계약에 명시된 Interview 흐름은 해당 복구 UI 또는 지속 작업 상태. 앱 시작 세션 판정은 Splash 실패 상태와 다시 시도 | 기본은 Global Event. 승인된 Interview 복구 흐름은 Feature State/Effect 또는 지속 Android 작업 상태. 앱 시작 세션 판정은 Splash State |
 | `ClientError` | HTTP 400, 401, 404 | 화면별 기획에 따른 UI | Feature State 또는 Effect |
 | `Unknown` | 분류할 수 없는 Exception | Toast | Global Event |
 
@@ -18,7 +18,7 @@
 - 화면별 message나 UI가 다르면 Feature State로 처리한다.
 - 한 번만 표시할 화면별 알림은 Feature Effect로 처리한다.
 - 앱 전체에서 동일한 Modal, Toast 또는 Snackbar로 처리하면 Global Event를 사용한다.
-- 재시도나 앱 종료처럼 app-level action이 필요하면 기본적으로 Global Event를 사용하되, 아래 Interview 예외 조건을 충족하는 재시도는 Feature State/Effect 또는 지속 작업 상태를 사용한다.
+- 재시도나 앱 종료처럼 app-level action이 필요하면 기본적으로 Global Event를 사용하되, 아래 Interview 예외 조건을 충족하는 재시도는 Feature State/Effect 또는 지속 작업 상태를 사용하고, 앱 시작 세션 판정 예외(§2.2)의 재시도는 Splash State를 사용한다.
 - Client Error를 기본 Global Event로 변환하지 않는다.
 
 ### 2.1 Interview Network·Server Error 예외
@@ -29,10 +29,28 @@ Interview Feature 흐름의 복구 가능한 Network Error와 Server Error는 �
 - 복구에 필요한 로컬 세션과 미디어 체크포인트를 안전하게 저장한다.
 - Server Error는 서버 또는 API 계약이 중복 부수 효과 없이 같은 요청을 안전하게 재시도할 수 있다고 명시한다.
 - Feature State/Effect는 `feature:interview`가, 지속 Android 작업 상태는 승인된 작업 소유 계층이 관리한다.
-- 복구 경로가 없는 Interview Network Error와 Interview 밖의 모든 Network Error는 기존 Global Event를 사용한다.
-- 안전한 재시도와 복구 경로가 명시되지 않은 Interview Server Error와 Interview 밖의 모든 Server Error는 기존 Global Event를 사용한다.
+- 복구 경로가 없는 Interview Network Error와 Interview 밖의 모든 Network Error는 §2.2 예외를 제외하고 기존 Global Event를 사용한다.
+- 안전한 재시도와 복구 경로가 명시되지 않은 Interview Server Error와 Interview 밖의 모든 Server Error는 §2.2 예외를 제외하고 기존 Global Event를 사용한다.
 
 이 예외는 Unknown Error까지 Feature가 처리하도록 확장하지 않는다. Unknown Error는 계속 Global Event를 사용한다.
+
+### 2.2 앱 시작 세션 판정 Network·Server Error 예외
+
+앱 시작 세션 판정 중 발생한 Network Error와 Server Error는 앱 종료 Modal 대신 Splash Feature State의
+실패 상태로 처리하고 다시 시도 action을 제공한다. 이 예외는 다음 범위와 동작에만 적용한다.
+
+- 범위는 Splash 진입 시 실행하는 앱 시작 세션 판정(저장된 세션 확인부터 진입 목적지 결정까지)이다.
+  판정이 끝난 뒤의 화면, 로그인 버튼으로 시작한 로그인 이후 흐름과 다른 Feature의 Network·Server
+  Error는 기존 Global Event를 사용한다.
+- 저장된 토큰은 삭제하지 않는다. 토큰 재발급이 Network Error 또는 Server Error로 실패하면 `data`는
+  세션을 유지하고 원래 요청의 인증 만료 응답 대신 해당 Network·Server Error를 전파한다.
+- 저장된 세션이 있으면 세션 초기화와 로그인 화면 이동은 서버가 재발급 API에서 로그인 만료
+  (`LOGIN_EXPIRED`)를 명시적으로 반환한 경우에만 수행한다.
+- 실패 상태는 Splash에 머물며 로그인 버튼으로 이동하지 않는다. 다시 시도는 앱 시작 세션 판정 전체를
+  처음부터 다시 실행한다.
+- State와 다시 시도 Intent는 Splash를 소유한 `feature:login`이 관리하고 새로운 전역 mechanism을 만들지
+  않는다.
+- Unknown Error는 계속 Global Event를 사용한다.
 
 ## 3. 레이어별 책임
 
@@ -40,7 +58,7 @@ Interview Feature 흐름의 복구 가능한 Network Error와 Server Error는 �
 |---|---|
 | `data` | 외부 Exception을 프로젝트 error type으로 변환하거나 상위로 전파 |
 | `domain` | UseCase 결과와 UI 독립 error를 전달하고 UI 표현은 결정하지 않음 |
-| `feature:*` | Client Error를 State/Effect로 처리하고 Network/Server/Unknown을 Global Event로 전달. 단, 위 조건을 만족하는 Interview Network·Server Error는 Interview State/Effect 또는 지속 작업 상태로 처리 |
+| `feature:*` | Client Error를 State/Effect로 처리하고 Network/Server/Unknown을 Global Event로 전달. 단, 위 조건을 만족하는 Interview Network·Server Error는 Interview State/Effect 또는 지속 작업 상태로, 앱 시작 세션 판정 Network·Server Error는 Splash State로 처리 |
 | `core:common` | 플랫폼 독립 공통 Error, `GlobalAppEvent`, `GlobalErrorHandler` 계약 |
 | `app` | Global Event를 collect하고 Modal, Toast 또는 Snackbar 렌더링 |
 
