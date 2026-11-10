@@ -20,6 +20,9 @@ import androidx.navigation3.ui.NavDisplay
 import com.chottulink.lib.ChottuLink
 import com.dminus14.app.error.GlobalErrorHost
 import com.dminus14.app.feature.feedback.api.FeedbackOnboarding
+import com.dminus14.app.feature.interview.api.InterviewErrorRoute
+import com.dminus14.app.feature.interview.api.InterviewRoute
+import com.dminus14.app.feature.onboarding.api.OnBoardingInterview
 import com.dminus14.app.interview.InterviewAppLifecycleCoordinator
 import com.dminus14.app.modal.GlobalModalHost
 import com.dminus14.app.modal.GlobalModalManager
@@ -139,10 +142,23 @@ class MainActivity : ComponentActivity() {
         // token 이 빈 문자열이면(예: 잘못 해석된 링크) EnterGuestFeedbackUseCase 가 네트워크 호출도
         // 없이 검증 오류로 바로 실패해, 온보딩 화면을 열자마자 "링크를 다시 열어주세요" 에러
         // 모달만 뜨는 혼란스러운 UX가 된다. 애초에 진입하지 않는 게 낫다.
-        if (isFeedbackShareLink && !token.isNullOrBlank()) {
+        // 면접 흐름 몰입 중에는 외부 진입으로 면접을 끊지 않는다(iOS 동일). 받은 링크는 보관하거나
+        // 면접 종료 뒤 다시 처리하지 않고 버린다. ChottuLink 조회가 비동기라 판정은 이동 직전에 한다.
+        if (isFeedbackShareLink && !token.isNullOrBlank() && !isInterviewFlowInProgress()) {
             navigationState.navigator.goTo(FeedbackOnboarding(token))
         }
     }
+
+    /**
+     * 면접 흐름(면접 준비 위저드, 면접 준비·진행 화면, 면접 오류 화면)이 back stack에 남아 있는지 판정한다.
+     *
+     * 면접 종료·중도 이탈은 back stack을 홈으로 교체하고 위저드 닫기는 해당 route를 꺼내므로,
+     * 이 route가 남아 있다는 것은 면접 흐름이 아직 끝나지 않았다는 뜻이다.
+     */
+    private fun isInterviewFlowInProgress(): Boolean =
+        navigationState.navigator.backStack.any { route ->
+            route is OnBoardingInterview || route is InterviewRoute || route is InterviewErrorRoute
+        }
 
     private companion object {
         const val FEEDBACK_SHARE_DEEP_LINK_SCHEME = "hilit"
