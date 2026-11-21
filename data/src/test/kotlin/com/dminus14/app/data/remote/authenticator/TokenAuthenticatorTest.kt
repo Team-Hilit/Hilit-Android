@@ -11,7 +11,9 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.io.IOException
 
 class TokenAuthenticatorTest {
     @Test
@@ -130,7 +132,7 @@ class TokenAuthenticatorTest {
     }
 
     @Test
-    fun `refresh가 SessionException이 아니면 세션을 유지한 채 재요청하지 않는다`() {
+    fun `refresh가 네트워크 오류면 세션을 유지한 채 재요청하지 않고 IOException으로 실패한다`() {
         val sessionRepository =
             FakeSessionRepository(
                 session = AuthSession(accessToken = OLD_ACCESS_TOKEN, refreshToken = REFRESH_TOKEN),
@@ -144,10 +146,11 @@ class TokenAuthenticatorTest {
         MockWebServer().use { server ->
             server.enqueue(unauthorized(ApiErrorCode.TOKEN_EXPIRED))
 
-            client
-                .newCall(authorizedRequest(server.url("/refresh-network-error").toString()))
-                .execute()
-                .use { response -> assertEquals(401, response.code) }
+            assertThrows(IOException::class.java) {
+                client
+                    .newCall(authorizedRequest(server.url("/refresh-network-error").toString()))
+                    .execute()
+            }
 
             assertEquals(1, server.requestCount)
             assertEquals(1, sessionRepository.refreshCount)
