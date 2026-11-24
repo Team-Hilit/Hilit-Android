@@ -15,6 +15,7 @@ import com.dminus14.app.domain.usecase.GetInterviewProgressUseCase
 import com.dminus14.app.domain.usecase.GetInterviewResumeUseCase
 import com.dminus14.app.domain.usecase.SavePendingInterviewAnswerUseCase
 import com.dminus14.app.domain.usecase.SubmitAnswerUseCase
+import com.dminus14.app.domain.util.runCatchingCancellable
 import com.dminus14.app.feature.interview.api.InterviewErrorType
 import com.dminus14.app.feature.interview.error.InterviewErrorEffect
 import com.dminus14.app.feature.interview.error.InterviewErrorMutation
@@ -162,10 +163,13 @@ internal class InterviewErrorResumeHandler(
                             context.dispatch(InterviewErrorMutation.SessionInvalid)
                         } else {
                             // 서버가 이미 종료한 세션(HOLD_EXPIRED 등)은 리포트가 없으므로 정리 후 홈으로 보낸다.
-                            retainAndComplete(
-                                sessionId,
-                                InterviewErrorEffect.InterviewAbandonCompleted,
-                            )
+                            // 로컬 정리에 실패하면 진행 기록을 남겨 중단하기로 다시 정리할 수 있게 한다.
+                            runCatchingCancellable {
+                                retainAndComplete(
+                                    sessionId,
+                                    InterviewErrorEffect.InterviewAbandonCompleted,
+                                )
+                            }.onFailure(onFailure)
                         }
                     } else {
                         val nextQuestion = result.nextQuestion
