@@ -3,11 +3,15 @@ package com.dminus14.app.feature.interview.error
 import com.dminus14.app.domain.model.InterviewAbandon
 import com.dminus14.app.domain.model.InterviewAbandonCause
 import com.dminus14.app.domain.model.InterviewMediaManifest
+import com.dminus14.app.domain.model.InterviewResumeConfirm
+import com.dminus14.app.domain.model.InterviewResumeState
+import com.dminus14.app.domain.model.InterviewResumeStatus
 import com.dminus14.app.domain.model.InterviewTerminalStatus
 import com.dminus14.app.domain.model.InterviewTicketOutcome
 import com.dminus14.app.domain.model.InterviewUploadTaskStatus
 import com.dminus14.app.domain.usecase.AbandonInterviewUseCase
 import com.dminus14.app.domain.usecase.ConfirmInterviewResumeUseCase
+import com.dminus14.app.domain.usecase.DeleteInterviewSessionUseCase
 import com.dminus14.app.domain.usecase.GetInterviewMediaManifestUseCase
 import com.dminus14.app.domain.usecase.GetInterviewProgressUseCase
 import com.dminus14.app.domain.usecase.GetInterviewResumeUseCase
@@ -96,17 +100,102 @@ class InterviewErrorViewModelTest {
             assertEquals(listOf(InterviewErrorEffect.InterviewAbandonCompleted), effects)
         }
 
-    private fun createViewModel(fixture: InterviewViewModelTestFixture) =
-        InterviewErrorViewModel(
-            getProgress = GetInterviewProgressUseCase(fixture.localRepository),
-            getManifest = GetInterviewMediaManifestUseCase(fixture.localRepository),
-            getResume = GetInterviewResumeUseCase(fixture.interviewRepository),
-            confirmResume = ConfirmInterviewResumeUseCase(fixture.interviewRepository),
-            abandonInterview = AbandonInterviewUseCase(fixture.interviewRepository),
-            submitAnswer = SubmitAnswerUseCase(fixture.interviewRepository),
-            savePendingAnswer = SavePendingInterviewAnswerUseCase(fixture.localRepository),
-            retainSessionForCleanup =
-                RetainInterviewSessionForCleanupUseCase(fixture.localRepository),
-            recoveryStore = InterviewRecoveryStore(),
-        )
+    @Test
+    fun `재개 확정이 홀드 만료로 종료를 반환하면 로컬 데이터를 즉시 삭제하고 종료 결과를 전달한다`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val fixture = createResumeFixture(InterviewAbandonCause.HoldExpired)
+            val recoveryStore = InterviewRecoveryStore()
+            val viewModel = createViewModel(fixture, recoveryStore)
+            val effects = mutableListOf<InterviewErrorEffect>()
+            backgroundScope.launch { viewModel.effect.collect { effects += it } }
+
+            viewModel.onIntent(InterviewErrorIntent.Load(InterviewErrorType.NETWORK))
+            runCurrent()
+            viewModel.onIntent(InterviewErrorIntent.ClickResume)
+            runCurrent()
+
+            assertNull(fixture.progress)
+            assertNull(fixture.manifests[InterviewViewModelTestFixture.SESSION_ID])
+            assertEquals(0, fixture.uploadTasks.size)
+            assertNull(recoveryStore.consume())
+            assertEquals(listOf(InterviewErrorEffect.InterviewAbandonCompleted), effects)
+        }
+
+    @Test
+    fun `재개 확정의 종료 원인을 알 수 없으면 로컬 데이터를 보존하고 화면에 머문다`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val fixture = createResumeFixture(InterviewAbandonCause.Unknown("NEW_CAUSE"))
+            val viewModel = createViewModel(fixture)
+            val effects = mutableListOf<InterviewErrorEffect>()
+            backgroundScope.launch { viewModel.effect.collect { effects += it } }
+
+            viewModel.onIntent(InterviewErrorIntent.Load(InterviewErrorType.NETWORK))
+            runCurrent()
+            viewModel.onIntent(InterviewErrorIntent.ClickResume)
+            runCurrent()
+
+            assertNotNull(fixture.progress)
+            assertNotNull(fixture.manifests[InterviewViewModelTestFixture.SESSION_ID])
+            assertEquals(emptyList<InterviewErrorEffect>(), effects)
+        }
+
+    @Test
+    fun `재개 확정의 종료 원인이 홀드 만료로 확정되지 않으면 미디어를 보존하고 종료 결과를 전달한다`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val fixture = createResumeFixture(cause = null)
+            val recoveryStore = InterviewRecoveryStore()
+            val viewModel = createViewModel(fixture, recoveryStore)
+            val effects = mutableListOf<InterviewErrorEffect>()
+            backgroundScope.launch { viewModel.effect.collect { effects += it } }
+
+            viewModel.onIntent(InterviewErrorIntent.Load(InterviewErrorType.NETWORK))
+            runCurrent()
+            viewModel.onIntent(InterviewErrorIntent.ClickResume)
+            runCurrent()
+
+            assertNull(fixture.progress)
+            assertNotNull(fixture.manifests[InterviewViewModelTestFixture.SESSION_ID])
+            assertNull(recoveryStore.consume())
+            assertEquals(listOf(InterviewErrorEffect.InterviewAbandonCompleted), effects)
+        }
+
+    private fun createResumeFixture(cause: InterviewAbandonCause?) =
+        InterviewViewModelTestFixture().apply {
+            val sessionId = InterviewViewModelTestFixture.SESSION_ID
+            manifests[sessionId] = InterviewMediaManifest(sessionId = sessionId)
+            resumeStatus =
+                InterviewResumeStatus(
+                    resumeState = InterviewResumeState.Resumable,
+                    startedAt = null,
+                    elapsedSeconds = null,
+                    status = null,
+                )
+            resumeConfirm =
+                InterviewResumeConfirm(
+                    nextQuestion = null,
+                    sessionEnded = true,
+                    wrapUpMessage = null,
+                    endType = null,
+                    status = InterviewTerminalStatus.Abandoned,
+                    abandonCause = cause,
+                    endedAt = null,
+                )
+        }
+
+    private fun createViewModel(
+        fixture: InterviewViewModelTestFixture,
+        recoveryStore: InterviewRecoveryStore = InterviewRecoveryStore(),
+    ) = InterviewErrorViewModel(
+        getProgress = GetInterviewProgressUseCase(fixture.localRepository),
+        getManifest = GetInterviewMediaManifestUseCase(fixture.localRepository),
+        getResume = GetInterviewResumeUseCase(fixture.interviewRepository),
+        confirmResume = ConfirmInterviewResumeUseCase(fixture.interviewRepository),
+        deleteSession = DeleteInterviewSessionUseCase(fixture.localRepository),
+        abandonInterview = AbandonInterviewUseCase(fixture.interviewRepository),
+        submitAnswer = SubmitAnswerUseCase(fixture.interviewRepository),
+        savePendingAnswer = SavePendingInterviewAnswerUseCase(fixture.localRepository),
+        retainSessionForCleanup =
+            RetainInterviewSessionForCleanupUseCase(fixture.localRepository),
+        recoveryStore = recoveryStore,
+    )
 }

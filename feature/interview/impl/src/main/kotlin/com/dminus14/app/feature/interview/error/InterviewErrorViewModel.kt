@@ -7,6 +7,7 @@ import com.dminus14.app.domain.exception.NetworkUnavailableException
 import com.dminus14.app.domain.exception.ServerException
 import com.dminus14.app.domain.usecase.AbandonInterviewUseCase
 import com.dminus14.app.domain.usecase.ConfirmInterviewResumeUseCase
+import com.dminus14.app.domain.usecase.DeleteInterviewSessionUseCase
 import com.dminus14.app.domain.usecase.GetInterviewMediaManifestUseCase
 import com.dminus14.app.domain.usecase.GetInterviewProgressUseCase
 import com.dminus14.app.domain.usecase.GetInterviewResumeUseCase
@@ -29,6 +30,7 @@ class InterviewErrorViewModel
         getManifest: GetInterviewMediaManifestUseCase,
         getResume: GetInterviewResumeUseCase,
         confirmResume: ConfirmInterviewResumeUseCase,
+        deleteSession: DeleteInterviewSessionUseCase,
         abandonInterview: AbandonInterviewUseCase,
         submitAnswer: SubmitAnswerUseCase,
         savePendingAnswer: SavePendingInterviewAnswerUseCase,
@@ -55,6 +57,7 @@ class InterviewErrorViewModel
                 getManifest = getManifest,
                 getResume = getResume,
                 confirmResume = confirmResume,
+                deleteSession = deleteSession,
                 submitAnswer = submitAnswer,
                 savePendingAnswer = savePendingAnswer,
                 recoveryStore = recoveryStore,
@@ -62,6 +65,7 @@ class InterviewErrorViewModel
                 onGlobalError = ::emitGlobal,
                 onFailure = ::handleFailure,
                 onRetain = abortHandler::retainAndFinish,
+                retainAndComplete = abortHandler::retainAndComplete,
             )
 
         override fun onIntent(intent: InterviewErrorIntent) {

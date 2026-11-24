@@ -5,16 +5,20 @@ import com.dminus14.app.core.common.mvi.MviContext
 import com.dminus14.app.domain.exception.AiTemporarilyUnavailableException
 import com.dminus14.app.domain.exception.NetworkUnavailableException
 import com.dminus14.app.domain.exception.ServerException
+import com.dminus14.app.domain.model.InterviewAbandonCause
 import com.dminus14.app.domain.model.InterviewEndType
+import com.dminus14.app.domain.model.InterviewResumeConfirm
 import com.dminus14.app.domain.model.InterviewResumeState
 import com.dminus14.app.domain.model.InterviewTerminalStatus
 import com.dminus14.app.domain.model.SubmitAnswerResult
 import com.dminus14.app.domain.usecase.ConfirmInterviewResumeUseCase
+import com.dminus14.app.domain.usecase.DeleteInterviewSessionUseCase
 import com.dminus14.app.domain.usecase.GetInterviewMediaManifestUseCase
 import com.dminus14.app.domain.usecase.GetInterviewProgressUseCase
 import com.dminus14.app.domain.usecase.GetInterviewResumeUseCase
 import com.dminus14.app.domain.usecase.SavePendingInterviewAnswerUseCase
 import com.dminus14.app.domain.usecase.SubmitAnswerUseCase
+import com.dminus14.app.domain.util.runCatchingCancellable
 import com.dminus14.app.feature.interview.api.InterviewErrorType
 import com.dminus14.app.feature.interview.error.InterviewErrorEffect
 import com.dminus14.app.feature.interview.error.InterviewErrorMutation
@@ -35,6 +39,7 @@ internal class InterviewErrorResumeHandler(
     private val getManifest: GetInterviewMediaManifestUseCase,
     private val getResume: GetInterviewResumeUseCase,
     private val confirmResume: ConfirmInterviewResumeUseCase,
+    private val deleteSession: DeleteInterviewSessionUseCase,
     private val submitAnswer: SubmitAnswerUseCase,
     private val savePendingAnswer: SavePendingInterviewAnswerUseCase,
     private val recoveryStore: InterviewRecoveryStore,
@@ -42,6 +47,7 @@ internal class InterviewErrorResumeHandler(
     private val onGlobalError: (GlobalAppEvent) -> Unit,
     private val onFailure: (Throwable) -> Unit,
     private val onRetain: (Long?, InterviewErrorEffect) -> Unit,
+    private val retainAndComplete: suspend (Long?, InterviewErrorEffect) -> Unit,
 ) {
     private val state get() = context.state
     var sessionId: Long? = null
@@ -159,18 +165,19 @@ internal class InterviewErrorResumeHandler(
                             result.endType == InterviewEndType.SttReset
                         ) {
                             context.dispatch(InterviewErrorMutation.SessionInvalid)
+                        } else if (result.hasUnconfirmedEnd()) {
+                            // 알 수 없는 종료 값이면 세션과 미디어를 보존하고 전역 오류로 안내한다.
+                            onGlobalError(GlobalAppEvent.ShowUnknownError)
+                        } else if (result.abandonCause == InterviewAbandonCause.HoldExpired) {
+                            deleteEndedSession(sessionId)
                         } else {
-                            operation.complete()
-                            recoveryStore.publish(
-                                InterviewRecoveryStore.Result(
-                                    nextQuestion = result.nextQuestion,
-                                    sessionEnded = true,
-                                    wrapUpMessage = result.wrapUpMessage,
-                                    endType = result.endType,
-                                    reportGenerating = false,
-                                ),
-                            )
-                            context.sendEffect(InterviewErrorEffect.InterviewResumeConfirmed)
+                            // 홀드 만료로 확정되지 않은 종료는 미디어를 공통 보존 기한까지 남기고 홈으로 보낸다.
+                            runCatchingCancellable {
+                                retainAndComplete(
+                                    sessionId,
+                                    InterviewErrorEffect.InterviewAbandonCompleted,
+                                )
+                            }.onFailure(onFailure)
                         }
                     } else {
                         val nextQuestion = result.nextQuestion
@@ -196,6 +203,23 @@ internal class InterviewErrorResumeHandler(
                 }
         }
     }
+
+    /** 홀드가 만료된 세션은 리포트가 없으므로 로컬 데이터를 즉시 삭제하고 홈으로 보낸다. */
+    private suspend fun deleteEndedSession(sessionId: Long) {
+        runCatchingCancellable { deleteSession(sessionId) }
+            .onSuccess {
+                currentCoroutineContext().ensureActive()
+                operation.complete()
+                context.sendEffect(InterviewErrorEffect.InterviewAbandonCompleted)
+            }.onFailure(onFailure)
+    }
+
+    /** 종료 원인이 전혀 없거나 앱이 모르는 값이 포함되어 종료 상태를 확정할 수 없는지 판단한다. */
+    private fun InterviewResumeConfirm.hasUnconfirmedEnd(): Boolean =
+        status is InterviewTerminalStatus.Unknown ||
+            abandonCause is InterviewAbandonCause.Unknown ||
+            endType is InterviewEndType.Unknown ||
+            (status == null && abandonCause == null && endType == null)
 
     private fun retryPendingAnswer(sessionId: Long) {
         operation.launch(context) {
