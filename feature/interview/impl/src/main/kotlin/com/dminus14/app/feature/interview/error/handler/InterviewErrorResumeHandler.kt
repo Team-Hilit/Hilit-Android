@@ -5,7 +5,9 @@ import com.dminus14.app.core.common.mvi.MviContext
 import com.dminus14.app.domain.exception.AiTemporarilyUnavailableException
 import com.dminus14.app.domain.exception.NetworkUnavailableException
 import com.dminus14.app.domain.exception.ServerException
+import com.dminus14.app.domain.model.InterviewAbandonCause
 import com.dminus14.app.domain.model.InterviewEndType
+import com.dminus14.app.domain.model.InterviewResumeConfirm
 import com.dminus14.app.domain.model.InterviewResumeState
 import com.dminus14.app.domain.model.InterviewTerminalStatus
 import com.dminus14.app.domain.model.SubmitAnswerResult
@@ -15,7 +17,6 @@ import com.dminus14.app.domain.usecase.GetInterviewProgressUseCase
 import com.dminus14.app.domain.usecase.GetInterviewResumeUseCase
 import com.dminus14.app.domain.usecase.SavePendingInterviewAnswerUseCase
 import com.dminus14.app.domain.usecase.SubmitAnswerUseCase
-import com.dminus14.app.domain.util.runCatchingCancellable
 import com.dminus14.app.feature.interview.api.InterviewErrorType
 import com.dminus14.app.feature.interview.error.InterviewErrorEffect
 import com.dminus14.app.feature.interview.error.InterviewErrorMutation
@@ -161,15 +162,15 @@ internal class InterviewErrorResumeHandler(
                             result.endType == InterviewEndType.SttReset
                         ) {
                             context.dispatch(InterviewErrorMutation.SessionInvalid)
+                        } else if (result.hasUnconfirmedEnd()) {
+                            // 알 수 없는 종료 값이면 세션과 미디어를 보존하고 전역 오류로 안내한다.
+                            onGlobalError(GlobalAppEvent.ShowUnknownError)
                         } else {
-                            // 서버가 이미 종료한 세션(HOLD_EXPIRED 등)은 리포트가 없으므로 정리 후 홈으로 보낸다.
-                            // 로컬 정리에 실패하면 진행 기록을 남겨 중단하기로 다시 정리할 수 있게 한다.
-                            runCatchingCancellable {
-                                retainAndComplete(
-                                    sessionId,
-                                    InterviewErrorEffect.InterviewAbandonCompleted,
-                                )
-                            }.onFailure(onFailure)
+                            // 서버가 이미 종료한 세션(HOLD_EXPIRED 등)은 리포트 없이 정리 후 홈으로 보낸다.
+                            retainAndComplete(
+                                sessionId,
+                                InterviewErrorEffect.InterviewAbandonCompleted,
+                            )
                         }
                     } else {
                         val nextQuestion = result.nextQuestion
@@ -195,6 +196,13 @@ internal class InterviewErrorResumeHandler(
                 }
         }
     }
+
+    /** 종료 원인이 전혀 없거나 앱이 모르는 값이 포함되어 종료 상태를 확정할 수 없는지 판단한다. */
+    private fun InterviewResumeConfirm.hasUnconfirmedEnd(): Boolean =
+        status is InterviewTerminalStatus.Unknown ||
+            abandonCause is InterviewAbandonCause.Unknown ||
+            endType is InterviewEndType.Unknown ||
+            (status == null && abandonCause == null && endType == null)
 
     private fun retryPendingAnswer(sessionId: Long) {
         operation.launch(context) {

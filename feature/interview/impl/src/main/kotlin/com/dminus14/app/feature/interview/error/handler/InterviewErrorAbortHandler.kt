@@ -5,6 +5,7 @@ import com.dminus14.app.domain.exception.InterviewSessionAlreadyEndedException
 import com.dminus14.app.domain.model.InterviewAbandonRequestCause
 import com.dminus14.app.domain.usecase.AbandonInterviewUseCase
 import com.dminus14.app.domain.usecase.RetainInterviewSessionForCleanupUseCase
+import com.dminus14.app.domain.util.runCatchingCancellable
 import com.dminus14.app.feature.interview.api.InterviewErrorType
 import com.dminus14.app.feature.interview.error.InterviewErrorEffect
 import com.dminus14.app.feature.interview.error.InterviewErrorMutation
@@ -97,12 +98,21 @@ internal class InterviewErrorAbortHandler(
         operation.launch(context) { retainAndComplete(currentSessionId, effect) }
     }
 
-    /** 이미 실행 중인 operation 안에서 정리 인계와 종료 결과 발행을 이어서 수행한다. */
+    /**
+     * 이미 실행 중인 operation 안에서 정리 인계와 종료 결과 발행을 이어서 수행한다.
+     * 로컬 정리에 실패하면 진행 기록을 남긴 채 오류를 안내해 다시 시도할 수 있게 한다.
+     */
     suspend fun retainAndComplete(
         currentSessionId: Long?,
         effect: InterviewErrorEffect,
     ) {
-        if (currentSessionId != null) retainSessionForCleanup(currentSessionId)
+        if (currentSessionId != null) {
+            runCatchingCancellable { retainSessionForCleanup(currentSessionId) }
+                .onFailure { error ->
+                    onFailure(error)
+                    return
+                }
+        }
         currentCoroutineContext().ensureActive()
         operation.complete()
         context.sendEffect(effect)
