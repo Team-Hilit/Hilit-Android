@@ -172,10 +172,12 @@ internal class InterviewErrorResumeHandler(
                             deleteEndedSession(sessionId)
                         } else {
                             // 홀드 만료로 확정되지 않은 종료는 미디어를 공통 보존 기한까지 남기고 홈으로 보낸다.
-                            retainAndComplete(
-                                sessionId,
-                                InterviewErrorEffect.InterviewAbandonCompleted,
-                            )
+                            runCatchingCancellable {
+                                retainAndComplete(
+                                    sessionId,
+                                    InterviewErrorEffect.InterviewAbandonCompleted,
+                                )
+                            }.onFailure(onFailure)
                         }
                     } else {
                         val nextQuestion = result.nextQuestion
