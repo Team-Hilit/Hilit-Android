@@ -7,6 +7,8 @@ import com.dminus14.app.domain.model.InterviewMediaManifest
 import com.dminus14.app.domain.model.InterviewMediaOwnerType
 import com.dminus14.app.domain.model.InterviewMediaSegmentType
 import com.dminus14.app.domain.model.InterviewProgress
+import com.dminus14.app.domain.model.InterviewResumeConfirm
+import com.dminus14.app.domain.model.InterviewResumeStatus
 import com.dminus14.app.domain.model.InterviewSessionStatus
 import com.dminus14.app.domain.model.InterviewSessionStatusType
 import com.dminus14.app.domain.model.InterviewUploadTask
@@ -67,6 +69,8 @@ internal class InterviewViewModelTestFixture {
     var submitResult: SubmitAnswerResult? = null
     var abandonCallCount = 0
     var abandonResult: InterviewAbandon? = null
+    var resumeStatus: InterviewResumeStatus? = null
+    var resumeConfirm: InterviewResumeConfirm? = null
     val manifests = mutableMapOf<Long, InterviewMediaManifest>()
     val submittedCommands = mutableListOf<SubmitInterviewAnswerCommand>()
     val deletedMedia = mutableListOf<InterviewMediaFileRef>()
@@ -233,6 +237,14 @@ internal class InterviewViewModelTestFixture {
                     val command = args[0] as SubmitInterviewAnswerCommand
                     submittedCommands += command
                     checkNotNull(submitResult)
+                }
+
+                "getResume" -> {
+                    checkNotNull(resumeStatus)
+                }
+
+                "confirmResume" -> {
+                    checkNotNull(resumeConfirm)
                 }
 
                 "abandon" -> {
