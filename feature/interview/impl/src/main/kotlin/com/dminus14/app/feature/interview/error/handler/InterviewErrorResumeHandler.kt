@@ -42,6 +42,7 @@ internal class InterviewErrorResumeHandler(
     private val onGlobalError: (GlobalAppEvent) -> Unit,
     private val onFailure: (Throwable) -> Unit,
     private val onRetain: (Long?, InterviewErrorEffect) -> Unit,
+    private val retainAndComplete: suspend (Long?, InterviewErrorEffect) -> Unit,
 ) {
     private val state get() = context.state
     var sessionId: Long? = null
@@ -160,17 +161,11 @@ internal class InterviewErrorResumeHandler(
                         ) {
                             context.dispatch(InterviewErrorMutation.SessionInvalid)
                         } else {
-                            operation.complete()
-                            recoveryStore.publish(
-                                InterviewRecoveryStore.Result(
-                                    nextQuestion = result.nextQuestion,
-                                    sessionEnded = true,
-                                    wrapUpMessage = result.wrapUpMessage,
-                                    endType = result.endType,
-                                    reportGenerating = false,
-                                ),
+                            // 서버가 이미 종료한 세션(HOLD_EXPIRED 등)은 리포트가 없으므로 정리 후 홈으로 보낸다.
+                            retainAndComplete(
+                                sessionId,
+                                InterviewErrorEffect.InterviewAbandonCompleted,
                             )
-                            context.sendEffect(InterviewErrorEffect.InterviewResumeConfirmed)
                         }
                     } else {
                         val nextQuestion = result.nextQuestion
