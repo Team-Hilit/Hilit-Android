@@ -12,11 +12,13 @@ import com.dminus14.app.domain.model.InterviewResumeState
 import com.dminus14.app.domain.model.InterviewTerminalStatus
 import com.dminus14.app.domain.model.SubmitAnswerResult
 import com.dminus14.app.domain.usecase.ConfirmInterviewResumeUseCase
+import com.dminus14.app.domain.usecase.DeleteInterviewSessionUseCase
 import com.dminus14.app.domain.usecase.GetInterviewMediaManifestUseCase
 import com.dminus14.app.domain.usecase.GetInterviewProgressUseCase
 import com.dminus14.app.domain.usecase.GetInterviewResumeUseCase
 import com.dminus14.app.domain.usecase.SavePendingInterviewAnswerUseCase
 import com.dminus14.app.domain.usecase.SubmitAnswerUseCase
+import com.dminus14.app.domain.util.runCatchingCancellable
 import com.dminus14.app.feature.interview.api.InterviewErrorType
 import com.dminus14.app.feature.interview.error.InterviewErrorEffect
 import com.dminus14.app.feature.interview.error.InterviewErrorMutation
@@ -37,6 +39,7 @@ internal class InterviewErrorResumeHandler(
     private val getManifest: GetInterviewMediaManifestUseCase,
     private val getResume: GetInterviewResumeUseCase,
     private val confirmResume: ConfirmInterviewResumeUseCase,
+    private val deleteSession: DeleteInterviewSessionUseCase,
     private val submitAnswer: SubmitAnswerUseCase,
     private val savePendingAnswer: SavePendingInterviewAnswerUseCase,
     private val recoveryStore: InterviewRecoveryStore,
@@ -44,7 +47,6 @@ internal class InterviewErrorResumeHandler(
     private val onGlobalError: (GlobalAppEvent) -> Unit,
     private val onFailure: (Throwable) -> Unit,
     private val onRetain: (Long?, InterviewErrorEffect) -> Unit,
-    private val retainAndComplete: suspend (Long?, InterviewErrorEffect) -> Unit,
 ) {
     private val state get() = context.state
     var sessionId: Long? = null
@@ -166,11 +168,7 @@ internal class InterviewErrorResumeHandler(
                             // 알 수 없는 종료 값이면 세션과 미디어를 보존하고 전역 오류로 안내한다.
                             onGlobalError(GlobalAppEvent.ShowUnknownError)
                         } else {
-                            // 서버가 이미 종료한 세션(HOLD_EXPIRED 등)은 리포트 없이 정리 후 홈으로 보낸다.
-                            retainAndComplete(
-                                sessionId,
-                                InterviewErrorEffect.InterviewAbandonCompleted,
-                            )
+                            deleteEndedSession(sessionId)
                         }
                     } else {
                         val nextQuestion = result.nextQuestion
@@ -195,6 +193,16 @@ internal class InterviewErrorResumeHandler(
                     onFailure(error)
                 }
         }
+    }
+
+    /** 서버가 이미 종료한 세션(HOLD_EXPIRED 등)은 리포트가 없으므로 로컬 데이터를 즉시 삭제하고 홈으로 보낸다. */
+    private suspend fun deleteEndedSession(sessionId: Long) {
+        runCatchingCancellable { deleteSession(sessionId) }
+            .onSuccess {
+                currentCoroutineContext().ensureActive()
+                operation.complete()
+                context.sendEffect(InterviewErrorEffect.InterviewAbandonCompleted)
+            }.onFailure(onFailure)
     }
 
     /** 종료 원인이 전혀 없거나 앱이 모르는 값이 포함되어 종료 상태를 확정할 수 없는지 판단한다. */
