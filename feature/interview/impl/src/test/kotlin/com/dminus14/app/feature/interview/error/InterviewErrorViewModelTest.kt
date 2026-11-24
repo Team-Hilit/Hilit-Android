@@ -139,7 +139,27 @@ class InterviewErrorViewModelTest {
             assertEquals(emptyList<InterviewErrorEffect>(), effects)
         }
 
-    private fun createResumeFixture(cause: InterviewAbandonCause) =
+    @Test
+    fun `재개 확정의 종료 원인이 홀드 만료로 확정되지 않으면 미디어를 보존하고 종료 결과를 전달한다`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val fixture = createResumeFixture(cause = null)
+            val recoveryStore = InterviewRecoveryStore()
+            val viewModel = createViewModel(fixture, recoveryStore)
+            val effects = mutableListOf<InterviewErrorEffect>()
+            backgroundScope.launch { viewModel.effect.collect { effects += it } }
+
+            viewModel.onIntent(InterviewErrorIntent.Load(InterviewErrorType.NETWORK))
+            runCurrent()
+            viewModel.onIntent(InterviewErrorIntent.ClickResume)
+            runCurrent()
+
+            assertNull(fixture.progress)
+            assertNotNull(fixture.manifests[InterviewViewModelTestFixture.SESSION_ID])
+            assertNull(recoveryStore.consume())
+            assertEquals(listOf(InterviewErrorEffect.InterviewAbandonCompleted), effects)
+        }
+
+    private fun createResumeFixture(cause: InterviewAbandonCause?) =
         InterviewViewModelTestFixture().apply {
             val sessionId = InterviewViewModelTestFixture.SESSION_ID
             manifests[sessionId] = InterviewMediaManifest(sessionId = sessionId)

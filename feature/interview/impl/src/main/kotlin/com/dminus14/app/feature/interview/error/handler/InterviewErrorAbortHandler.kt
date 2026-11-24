@@ -97,7 +97,8 @@ internal class InterviewErrorAbortHandler(
         operation.launch(context) { retainAndComplete(currentSessionId, effect) }
     }
 
-    private suspend fun retainAndComplete(
+    /** 이미 실행 중인 operation 안에서 정리 인계와 종료 결과 발행을 이어서 수행한다. */
+    suspend fun retainAndComplete(
         currentSessionId: Long?,
         effect: InterviewErrorEffect,
     ) {

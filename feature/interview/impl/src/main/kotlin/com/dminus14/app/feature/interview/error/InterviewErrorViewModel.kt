@@ -65,6 +65,7 @@ class InterviewErrorViewModel
                 onGlobalError = ::emitGlobal,
                 onFailure = ::handleFailure,
                 onRetain = abortHandler::retainAndFinish,
+                retainAndComplete = abortHandler::retainAndComplete,
             )
 
         override fun onIntent(intent: InterviewErrorIntent) {

@@ -47,6 +47,7 @@ internal class InterviewErrorResumeHandler(
     private val onGlobalError: (GlobalAppEvent) -> Unit,
     private val onFailure: (Throwable) -> Unit,
     private val onRetain: (Long?, InterviewErrorEffect) -> Unit,
+    private val retainAndComplete: suspend (Long?, InterviewErrorEffect) -> Unit,
 ) {
     private val state get() = context.state
     var sessionId: Long? = null
@@ -167,8 +168,14 @@ internal class InterviewErrorResumeHandler(
                         } else if (result.hasUnconfirmedEnd()) {
                             // 알 수 없는 종료 값이면 세션과 미디어를 보존하고 전역 오류로 안내한다.
                             onGlobalError(GlobalAppEvent.ShowUnknownError)
-                        } else {
+                        } else if (result.abandonCause == InterviewAbandonCause.HoldExpired) {
                             deleteEndedSession(sessionId)
+                        } else {
+                            // 홀드 만료로 확정되지 않은 종료는 미디어를 공통 보존 기한까지 남기고 홈으로 보낸다.
+                            retainAndComplete(
+                                sessionId,
+                                InterviewErrorEffect.InterviewAbandonCompleted,
+                            )
                         }
                     } else {
                         val nextQuestion = result.nextQuestion
@@ -195,7 +202,7 @@ internal class InterviewErrorResumeHandler(
         }
     }
 
-    /** 서버가 이미 종료한 세션(HOLD_EXPIRED 등)은 리포트가 없으므로 로컬 데이터를 즉시 삭제하고 홈으로 보낸다. */
+    /** 홀드가 만료된 세션은 리포트가 없으므로 로컬 데이터를 즉시 삭제하고 홈으로 보낸다. */
     private suspend fun deleteEndedSession(sessionId: Long) {
         runCatchingCancellable { deleteSession(sessionId) }
             .onSuccess {
