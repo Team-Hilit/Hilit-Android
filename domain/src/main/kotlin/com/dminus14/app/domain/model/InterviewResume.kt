@@ -39,4 +39,11 @@ data class InterviewResumeConfirm(
     val status: InterviewTerminalStatus?,
     val abandonCause: InterviewAbandonCause?,
     val endedAt: String?,
-)
+) {
+    val hasUnconfirmedEnd: Boolean
+        get() =
+            status is InterviewTerminalStatus.Unknown ||
+                abandonCause is InterviewAbandonCause.Unknown ||
+                endType is InterviewEndType.Unknown ||
+                (status == null && abandonCause == null && endType == null)
+}
