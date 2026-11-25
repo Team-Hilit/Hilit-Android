@@ -31,6 +31,7 @@ internal class HomeSessionHandler(
     private var checkJob: Job? = null
 
     fun checkSession(reloadHome: () -> Unit) {
+        if (context.state.value.isLoading) return
         checkJob?.cancel()
         checkJob =
             context.launch {
@@ -78,12 +79,14 @@ internal class HomeSessionHandler(
         if (!cleared) return
 
         pendingSessionId = null
-        context.dispatch(HomeMutation.SessionAbsent)
+        context.dispatch(HomeMutation.SessionEligibilityRefreshStarted)
         reloadHome()
     }
 
     fun startSession() {
-        when (context.state.value.sessionStartOverlay) {
+        val state = context.state.value
+        if (state.isLoading) return
+        when (state.sessionStartOverlay) {
             is HomeSessionStartOverlayState.InProgress -> {
                 context.dispatch(HomeMutation.RestartRequested)
             }
@@ -93,7 +96,7 @@ internal class HomeSessionHandler(
             }
 
             else -> {
-                if ((context.state.value.remainingTicketCount ?: 0) > 0) {
+                if ((state.remainingTicketCount ?: 0) > 0) {
                     context.sendEffect(HomeEffect.GoToOnboardingInterviewRequested)
                     dismissOverlay()
                 } else {
@@ -117,7 +120,6 @@ internal class HomeSessionHandler(
     /** 중단이 이미 완료된 응답도 성공으로 보고 기존 정리 예약 정책을 유지한다. */
     private fun confirmRestart() {
         val sessionId = pendingSessionId ?: return
-        if (context.state.value.isLoading) return
         context.dispatch(HomeMutation.LoadStarted)
         context.launch {
             val error =

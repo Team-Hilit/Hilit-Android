@@ -912,10 +912,17 @@ class HomeViewModelTest {
             viewModel.onIntent(HomeIntent.Load)
             advanceUntilIdle()
             assertEquals(0, viewModel.state.value.remainingTicketCount)
+            val profileGate = CompletableDeferred<Unit>()
+            userRepository.profileGate = profileGate
             userRepository.profileResult =
                 Result.success(sampleUserProfile.copy(remainingTicketCount = 1))
 
             viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
+            advanceUntilIdle()
+            assertTrue(viewModel.state.value.isLoading)
+            assertNull(viewModel.state.value.sessionStartOverlay)
+
+            profileGate.complete(Unit)
             advanceUntilIdle()
 
             val state = viewModel.state.value
@@ -925,6 +932,50 @@ class HomeViewModelTest {
                 state.sessionStartOverlay,
             )
             assertEquals(listOf(42L), interviewRepository.resumeSessionIds)
+        }
+
+    @Test
+    fun `기존 이용권이 있어도 최신 프로필을 기다리는 동안 면접을 시작하지 않는다`() =
+        runViewModelTest {
+            val userRepository = FakeUserRepository()
+            val viewModel =
+                createViewModel(
+                    userRepository = userRepository,
+                    interviewRepository =
+                        FakeInterviewRepository(
+                            resumeResult = Result.success(resumeStatus(InterviewResumeState.Ended)),
+                        ),
+                    progress = sampleProgress(sessionId = 42L),
+                )
+            val effects = mutableListOf<HomeEffect>()
+            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                viewModel.effect.collect(effects::add)
+            }
+            viewModel.onIntent(HomeIntent.Load)
+            advanceUntilIdle()
+            assertEquals(3, viewModel.state.value.remainingTicketCount)
+            val profileGate = CompletableDeferred<Unit>()
+            userRepository.profileGate = profileGate
+            userRepository.profileResult =
+                Result.success(sampleUserProfile.copy(remainingTicketCount = 0))
+
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
+            advanceUntilIdle()
+            viewModel.onIntent(HomeIntent.ClickSessionStart)
+            testScheduler.runCurrent()
+
+            assertTrue(viewModel.state.value.isLoading)
+            assertNull(viewModel.state.value.sessionStartOverlay)
+            assertTrue(effects.isEmpty())
+
+            profileGate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(0, viewModel.state.value.remainingTicketCount)
+            assertTrue(
+                viewModel.state.value.sessionStartOverlay is HomeSessionStartOverlayState.NoTickets,
+            )
+            assertTrue(effects.isEmpty())
         }
 
     @Test
@@ -945,11 +996,13 @@ class HomeViewModelTest {
             viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
             advanceUntilIdle()
             assertNull(localRepository.progress)
-            assertTrue(
-                viewModel.state.value.sessionStartOverlay is HomeSessionStartOverlayState.NoTickets,
-            )
+            assertTrue(viewModel.state.value.isLoading)
+            assertNull(viewModel.state.value.sessionStartOverlay)
 
             viewModel.onIntent(HomeIntent.ClickSessionOverlayDismiss)
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
+            assertNull(viewModel.state.value.sessionStartOverlay)
+
             profileGate.complete(Unit)
             advanceUntilIdle()
 
@@ -1467,7 +1520,7 @@ class HomeViewModelTest {
 
     private class FakeUserRepository(
         var profileResult: Result<UserProfile> = Result.success(sampleUserProfile),
-        private val profileGate: CompletableDeferred<Unit>? = null,
+        var profileGate: CompletableDeferred<Unit>? = null,
     ) : UserRepository {
         override suspend fun getUserProfile(): UserProfile {
             profileGate?.await()
