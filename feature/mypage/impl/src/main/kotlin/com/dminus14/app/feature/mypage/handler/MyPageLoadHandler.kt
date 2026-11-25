@@ -25,10 +25,12 @@ internal class MyPageLoadHandler(
     private val onEvent: (MyPageLoadEvent) -> Unit,
 ) {
     private var loadJob: Job? = null
+    private var reportRefreshJob: Job? = null
     private var loadVersion = 0
 
     fun load() {
         loadJob?.cancel()
+        reportRefreshJob?.cancel()
         val version = ++loadVersion
         loadJob =
             context.launch {
@@ -85,6 +87,18 @@ internal class MyPageLoadHandler(
                         reportsResult.exceptionOrNull(),
                     )
                 if (failures.isNotEmpty()) handleLoadFailures(failures)
+            }
+    }
+
+    fun refreshReportsSilently() {
+        reportRefreshJob?.cancel()
+        reportRefreshJob =
+            context.launch {
+                getInterviewReportListUseCase()
+                    .rethrowMyPageCancellation()
+                    .onSuccess { reportList ->
+                        context.dispatch(MyPageMutation.ReportsLoaded(reportList))
+                    }
             }
     }
 

@@ -6,7 +6,9 @@ import com.dminus14.app.domain.model.Portfolio
 import com.dminus14.app.domain.model.PortfolioStatus
 import com.dminus14.app.domain.model.UserProfile
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MyPageUiMapperTest {
@@ -140,6 +142,88 @@ class MyPageUiMapperTest {
         )
     }
 
+    @Test
+    fun `포트폴리오가 삭제되면 삭제 상태가 true이고 헤더 제목과 상세에 파일명을 표시한다`() {
+        val uiModel =
+            sampleReportItem(
+                portfolioFileName = "deleted_portfolio.pdf",
+                portfolioDeleted = true,
+            ).toReportUiModel()
+
+        assertTrue(uiModel.isPortfolioDeleted)
+        assertEquals("deleted_portfolio.pdf", uiModel.title)
+        assertEquals("deleted_portfolio.pdf", uiModel.portfolioFileName)
+    }
+
+    @Test
+    fun `포트폴리오가 삭제되었지만 파일명이 비어 있으면 직군과 연차 조합으로 헤더 제목을 대체한다`() {
+        val uiModel =
+            sampleReportItem(
+                portfolioFileName = null,
+                portfolioDeleted = true,
+            ).toReportUiModel()
+
+        assertTrue(uiModel.isPortfolioDeleted)
+        assertEquals("백엔드 · 3년차 면접", uiModel.title)
+        assertEquals("내용 없음", uiModel.portfolioFileName)
+    }
+
+    @Test
+    fun `리포트 생성이 실패하면 포트폴리오가 삭제되지 않아도 헤더 제목에 파일명을 표시한다`() {
+        val uiModel =
+            sampleReportItem(
+                status = InterviewReportStatus.FAILED,
+                portfolioFileName = "failed_report_portfolio.pdf",
+                portfolioDeleted = false,
+            ).toReportUiModel()
+
+        assertFalse(uiModel.isPortfolioDeleted)
+        assertEquals("failed_report_portfolio.pdf", uiModel.title)
+    }
+
+    @Test
+    fun `정상 리포트이고 포트폴리오가 삭제되지 않으면 직군과 연차 조합을 헤더 제목으로 사용한다`() {
+        val uiModel =
+            sampleReportItem(
+                status = InterviewReportStatus.READY,
+                portfolioDeleted = false,
+            ).toReportUiModel()
+
+        assertFalse(uiModel.isPortfolioDeleted)
+        assertEquals("백엔드 · 3년차 면접", uiModel.title)
+        assertEquals("resume.pdf", uiModel.portfolioFileName)
+    }
+
+    @Test
+    fun `연차나 직군 정보가 일부 없으면 누락된 항목을 제외하고 헤더 제목을 구성한다`() {
+        val base = sampleReportItem()
+        val onlyRole =
+            base
+                .copy(
+                    jobType = "ANDROID",
+                    jobTypeLabel = "Android",
+                    careerYears = null,
+                ).toReportUiModel()
+        val onlyYears =
+            base
+                .copy(
+                    jobType = null,
+                    jobTypeLabel = null,
+                    careerYears = 2,
+                ).toReportUiModel()
+        val neither =
+            base
+                .copy(
+                    jobType = null,
+                    jobTypeLabel = null,
+                    careerYears = null,
+                ).toReportUiModel()
+
+        assertEquals("Android 면접", onlyRole.title)
+        assertEquals("2년차 면접", onlyYears.title)
+        assertEquals("면접 리포트", neither.title)
+    }
+
     private fun sampleProfile(
         careerYears: Int? = 3,
         jobRole: String? = "BACKEND",
@@ -170,14 +254,16 @@ class MyPageUiMapperTest {
         status: InterviewReportStatus = InterviewReportStatus.READY,
         feedbackAvailable: Boolean = true,
         jdUrl: String? = "https://careers.example.com/jobs/1",
+        portfolioFileName: String? = "resume.pdf",
+        portfolioDeleted: Boolean = false,
     ) = InterviewReportListItem(
         sessionId = 1L,
         jobType = "BACKEND",
         jobTypeLabel = "백엔드",
         careerYears = 3,
         interviewedAt = "2026-08-04T00:00:00",
-        portfolioFileName = "resume.pdf",
-        portfolioDeleted = false,
+        portfolioFileName = portfolioFileName,
+        portfolioDeleted = portfolioDeleted,
         jdUrl = jdUrl,
         reportStatus = status,
         feedbackAvailable = feedbackAvailable,

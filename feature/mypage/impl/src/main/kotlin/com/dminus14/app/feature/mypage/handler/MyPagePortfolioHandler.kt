@@ -21,6 +21,7 @@ import kotlinx.coroutines.isActive
 import java.io.File
 
 /** PDF 임시 파일과 업로드·삭제·폴링 작업의 수명을 관리한다. */
+@Suppress("LongParameterList")
 internal class MyPagePortfolioHandler(
     private val context: MviContext<MyPageState, MyPageMutation, MyPageEffect>,
     private val getPortfolioOverviewUseCase: GetPortfolioOverviewUseCase,
@@ -28,6 +29,7 @@ internal class MyPagePortfolioHandler(
     private val getPortfolioStatusUseCase: GetPortfolioStatusUseCase,
     private val deletePortfolioUseCase: DeletePortfolioUseCase,
     private val portfolioFileReader: PortfolioFileReader,
+    private val onPortfolioDeleted: () -> Unit = {},
 ) {
     private var fileReadJob: Job? = null
     private var fileReadVersion = 0
@@ -279,6 +281,7 @@ internal class MyPagePortfolioHandler(
             context.dispatch(MyPageMutation.ModalSubmissionFinished)
             if (error == null) {
                 context.dispatch(MyPageMutation.PortfolioDeleted)
+                onPortfolioDeleted()
                 refreshOverviewSilently()
             } else {
                 context.handleMyPageError(error)

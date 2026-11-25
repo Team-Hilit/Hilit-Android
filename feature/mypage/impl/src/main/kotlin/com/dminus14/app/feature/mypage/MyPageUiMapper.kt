@@ -14,6 +14,7 @@ import java.util.Locale
  */
 
 private const val NO_CONTENT = "내용 없음"
+private const val FALLBACK_REPORT_TITLE = "면접 리포트"
 private const val KAKAO_PROVIDER = "KAKAO"
 private const val EMAIL_MASK = "****"
 private const val LOCAL_PART_LONG_THRESHOLD = 4
@@ -107,16 +108,45 @@ internal fun Portfolio.toPortfolioState(previousState: MyPagePortfolioState): My
     }
 
 internal fun InterviewReportListItem.toReportUiModel(): MyPageReportUiModel {
+    val status = MyPageReportStatus.valueOf(reportStatus.name)
     val jobRole = MyPageJobRole.fromRaw(jobType)
+    val resolvedJobRoleLabel =
+        jobTypeLabel?.takeIf { it.isNotBlank() }
+            ?: jobRole?.label
+            ?: jobType?.takeIf { it.isNotBlank() }
+    val snapshotTitle = formatReportSnapshotTitle(resolvedJobRoleLabel, careerYears)
+    val validFileName = portfolioFileName?.takeIf { it.isNotBlank() }
+    val usesPortfolioFileNameTitle = portfolioDeleted || status == MyPageReportStatus.FAILED
+    val headerTitle =
+        if (usesPortfolioFileNameTitle) {
+            validFileName ?: snapshotTitle
+        } else {
+            snapshotTitle
+        }
+
     return MyPageReportUiModel(
         id = sessionId.toString(),
+        title = headerTitle,
         jobRole = jobRole,
-        jobRoleLabel = jobTypeLabel ?: jobRole?.label ?: jobType ?: NO_CONTENT,
+        jobRoleLabel = resolvedJobRoleLabel ?: NO_CONTENT,
         experienceYears = careerYears,
         createdAt = interviewedAt.orEmpty(),
-        status = MyPageReportStatus.valueOf(reportStatus.name),
-        portfolioFileName = portfolioFileName ?: NO_CONTENT,
+        status = status,
+        portfolioFileName = validFileName ?: NO_CONTENT,
+        isPortfolioDeleted = portfolioDeleted,
         jobDescription = jdUrl ?: "JD 직접 입력",
         isFeedbackAvailable = feedbackAvailable,
     )
+}
+
+private fun formatReportSnapshotTitle(
+    jobRoleLabel: String?,
+    careerYears: Int?,
+): String {
+    val pieces =
+        listOfNotNull(
+            jobRoleLabel?.takeIf { it.isNotBlank() },
+            careerYears?.let { years -> "${years}년차" },
+        )
+    return if (pieces.isEmpty()) FALLBACK_REPORT_TITLE else "${pieces.joinToString(" · ")} 면접"
 }

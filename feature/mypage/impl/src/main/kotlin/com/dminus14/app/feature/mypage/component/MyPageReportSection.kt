@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -120,6 +122,7 @@ private fun ReportCard(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
@@ -127,16 +130,15 @@ private fun ReportCard(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        "${report.jobRoleAndExperience}차 면접",
+                        report.title,
                         style = HilitTheme.typography.body2,
                         color = HilitTheme.colors.gray800,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        report.createdAt.toReportCreatedAtText(),
-                        style = HilitTheme.typography.body10,
-                        color = HilitTheme.colors.gray400,
+                    ReportMetaRow(
+                        createdAt = report.createdAt.toReportCreatedAtText(),
+                        isPortfolioDeleted = report.isPortfolioDeleted,
                     )
                 }
 
@@ -223,6 +225,36 @@ private fun ReportCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ReportMetaRow(
+    createdAt: String,
+    isPortfolioDeleted: Boolean,
+) {
+    if (createdAt.isEmpty() && !isPortfolioDeleted) return
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (createdAt.isNotEmpty()) {
+            Text(
+                text = createdAt,
+                style = HilitTheme.typography.body10,
+                color = HilitTheme.colors.gray400,
+                modifier = Modifier.align(Alignment.CenterVertically),
+            )
+        }
+        if (isPortfolioDeleted) {
+            HilitTag(
+                colorType = TagColorType.Gray,
+                tagType = TagType.Small,
+                text = "삭제된 포트폴리오",
+                modifier = Modifier.align(Alignment.CenterVertically),
+            )
+        }
+    }
+}
+
 private fun String.toReportCreatedAtText(): String =
     runCatching {
         LocalDateTime.parse(this).format(ReportCreatedAtFormatter)
@@ -287,15 +319,24 @@ private fun ReportAction(
 private fun sampleReport(
     status: MyPageReportStatus,
     isFeedbackAvailable: Boolean = true,
+    isPortfolioDeleted: Boolean = false,
+    portfolioFileName: String = "sample_portfolio.pdf",
 ): MyPageReportUiModel =
     MyPageReportUiModel(
-        id = "sample-$status",
+        id = "sample-$status-$isPortfolioDeleted",
+        title =
+            if (isPortfolioDeleted || status == MyPageReportStatus.FAILED) {
+                portfolioFileName
+            } else {
+                "${MyPageJobRole.ANDROID.label} · 3년차 면접"
+            },
         jobRole = MyPageJobRole.ANDROID,
         jobRoleLabel = MyPageJobRole.ANDROID.label,
         experienceYears = 3,
         createdAt = "2026-08-04T14:20:00.000000",
         status = status,
-        portfolioFileName = "sample_portfolio.pdf",
+        portfolioFileName = portfolioFileName,
+        isPortfolioDeleted = isPortfolioDeleted,
         jobDescription = "careers.example.com/jobs/1024",
         isFeedbackAvailable = isFeedbackAvailable,
     )
@@ -394,6 +435,39 @@ private fun ReportCardFailedPreview() {
         ReportCard(
             report = sampleReport(MyPageReportStatus.FAILED),
             expanded = true,
+            onToggleClick = {},
+            onReportViewClick = {},
+            onGuestFeedbackClick = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 375)
+@Composable
+private fun ReportCardPortfolioDeletedPreview() {
+    HilitTheme {
+        ReportCard(
+            report = sampleReport(MyPageReportStatus.READY, isPortfolioDeleted = true),
+            expanded = true,
+            onToggleClick = {},
+            onReportViewClick = {},
+            onGuestFeedbackClick = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 375)
+@Composable
+private fun ReportCardFailedAndPortfolioDeletedPreview() {
+    HilitTheme {
+        ReportCard(
+            report =
+                sampleReport(
+                    status = MyPageReportStatus.FAILED,
+                    isFeedbackAvailable = false,
+                    isPortfolioDeleted = true,
+                ),
+            expanded = false,
             onToggleClick = {},
             onReportViewClick = {},
             onGuestFeedbackClick = {},

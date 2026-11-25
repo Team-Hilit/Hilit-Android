@@ -610,6 +610,51 @@ class MyPageViewModelTest {
             assertFalse(viewModel.state.value.isTicketInfoTooltipVisible)
         }
 
+    @Test
+    fun `포트폴리오 삭제에 성공하면 리포트 목록을 다시 조회해 삭제된 포트폴리오 상태를 반영한다`() =
+        runViewModelTest {
+            val portfolioRepository =
+                FakePortfolioRepository(
+                    overview = overviewWith(samplePortfolio(PortfolioStatus.READY)),
+                )
+            val deletedReportList =
+                InterviewReportList(
+                    reports = listOf(sampleReportItem.copy(portfolioDeleted = true)),
+                )
+            val interviewRepository =
+                FakeInterviewRepository(
+                    reportListResults =
+                        mutableListOf(
+                            Result.success(sampleReportList),
+                            Result.success(deletedReportList),
+                        ),
+                )
+            val viewModel =
+                createViewModel(
+                    portfolioRepository = portfolioRepository,
+                    interviewRepository = interviewRepository,
+                )
+            viewModel.onIntent(MyPageIntent.Load)
+            advanceUntilIdle()
+            assertFalse(
+                viewModel.state.value.reports
+                    .single()
+                    .isPortfolioDeleted,
+            )
+
+            viewModel.onIntent(MyPageIntent.Portfolio.ClickPortfolioDelete)
+            viewModel.onIntent(MyPageIntent.ConfirmModal)
+            advanceUntilIdle()
+
+            val updatedReport =
+                viewModel.state.value.reports
+                    .single()
+            assertTrue(updatedReport.isPortfolioDeleted)
+            assertEquals("resume.pdf", updatedReport.title)
+            assertEquals("resume.pdf", updatedReport.portfolioFileName)
+            assertEquals(2, interviewRepository.reportListCallCount)
+        }
+
     // ---- 테스트 유틸 ----
 
     private fun runViewModelTest(block: suspend TestScope.() -> Unit) =
@@ -900,7 +945,11 @@ class MyPageViewModelTest {
             Result.success(
                 sampleReportList,
             ),
+        private val reportListResults: MutableList<Result<InterviewReportList>> = mutableListOf(),
     ) : InterviewRepository {
+        var reportListCallCount = 0
+            private set
+
         override suspend fun validateJdUrl(jdUrl: String): JdValidationResult = error("사용하지 않음")
 
         override suspend fun createInterviewSession(
@@ -913,7 +962,11 @@ class MyPageViewModelTest {
         override suspend fun getInterviewSessionStatus(sessionId: Long): InterviewSessionStatus =
             error("사용하지 않음")
 
-        override suspend fun getReportList(): InterviewReportList = reportListResult.getOrThrow()
+        override suspend fun getReportList(): InterviewReportList {
+            val result = reportListResults.getOrElse(reportListCallCount) { reportListResult }
+            reportListCallCount += 1
+            return result.getOrThrow()
+        }
 
         override suspend fun submitAnswer(
             command: SubmitInterviewAnswerCommand,

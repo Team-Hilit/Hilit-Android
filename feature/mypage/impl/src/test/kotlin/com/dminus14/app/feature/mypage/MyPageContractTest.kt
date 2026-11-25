@@ -9,12 +9,14 @@ class MyPageContractTest {
         val report =
             MyPageReportUiModel(
                 id = "synthetic-report",
+                title = "iOS · 2년차 면접",
                 jobRole = MyPageJobRole.IOS,
                 jobRoleLabel = MyPageJobRole.IOS.label,
                 experienceYears = 2,
                 createdAt = "2026.08.04",
                 status = MyPageReportStatus.READY,
                 portfolioFileName = "sample_portfolio.pdf",
+                isPortfolioDeleted = false,
                 jobDescription = "JD 직접 입력",
                 isFeedbackAvailable = true,
             )

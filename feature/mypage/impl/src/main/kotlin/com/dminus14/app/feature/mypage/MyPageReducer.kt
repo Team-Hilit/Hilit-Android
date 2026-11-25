@@ -140,7 +140,12 @@ internal object MyPageReducer : MviReducer<MyPageState, MyPageMutation> {
                 }
 
                 is MyPageMutation.ReportsLoaded -> {
-                    copy(reports = mutation.reportList.reports.map { it.toReportUiModel() })
+                    val mapped = mutation.reportList.reports.map { it.toReportUiModel() }
+                    val validIds = mapped.mapTo(mutableSetOf()) { it.id }
+                    copy(
+                        reports = mapped,
+                        expandedReportIds = expandedReportIds.intersect(validIds),
+                    )
                 }
 
                 is MyPageMutation.OverviewLoaded -> {
