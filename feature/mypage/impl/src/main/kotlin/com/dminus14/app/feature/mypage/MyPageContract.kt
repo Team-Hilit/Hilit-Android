@@ -160,12 +160,14 @@ enum class MyPageJobRole(
 @Immutable
 data class MyPageReportUiModel(
     val id: String,
+    val title: String,
     val jobRole: MyPageJobRole?,
     val jobRoleLabel: String,
     val experienceYears: Int?,
     val createdAt: String,
     val status: MyPageReportStatus,
     val portfolioFileName: String,
+    val isPortfolioDeleted: Boolean = false,
     val jobDescription: String,
     val isFeedbackAvailable: Boolean,
 ) {

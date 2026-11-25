@@ -41,6 +41,7 @@ class MyPageViewModel
                 getPortfolioStatusUseCase,
                 deletePortfolioUseCase,
                 portfolioFileReader,
+                onPortfolioDeleted = ::refreshReportsAfterPortfolioDeleted,
             )
         private val account = MyPageAccountHandler(context, logoutUseCase, withdrawUserUseCase)
         private val initialLoad =
@@ -195,5 +196,9 @@ class MyPageViewModel
             if (wasUploadAlreadyCompleted) {
                 context.launch { portfolio.refreshOverviewSilently() }
             }
+        }
+
+        private fun refreshReportsAfterPortfolioDeleted() {
+            initialLoad.refreshReportsSilently()
         }
     }
