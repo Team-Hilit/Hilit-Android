@@ -21,6 +21,7 @@ import com.dminus14.app.feature.interview.interview.InterviewState
 import com.dminus14.app.feature.interview.interview.InterviewTurnStateMachine
 import com.dminus14.app.feature.interview.interview.InterviewWorkflow
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -37,26 +38,33 @@ internal class InterviewSubmissionHandler(
     private val state get() = context.state
     val pendingEndRequest get() = turnStateMachine.pendingEndRequest
 
+    private var submissionJob: Job? = null
+
+    fun cancelSubmission() {
+        submissionJob?.cancel()
+    }
+
     fun submit(command: SubmitInterviewAnswerCommand) {
         if (!turnStateMachine.beginSubmission()) return
-        context.launch {
-            savePendingAnswer(command).onFailure {
+        submissionJob =
+            context.launch {
+                savePendingAnswer(command).onFailure {
+                    currentCoroutineContext().ensureActive()
+                    if (it is CancellationException) throw it
+                    workflow(InterviewWorkflow.FatalExit)
+                    return@launch
+                }
                 currentCoroutineContext().ensureActive()
-                if (it is CancellationException) throw it
-                workflow(InterviewWorkflow.FatalExit)
-                return@launch
+                submitAnswer(command)
+                    .onSuccess { result ->
+                        currentCoroutineContext().ensureActive()
+                        turnStateMachine.finishSubmission()
+                        command.audioFile?.let { deleteMediaFile(it) }
+                        savePendingAnswer(null)
+                        currentCoroutineContext().ensureActive()
+                        handleSubmitResult(command, result)
+                    }.onFailure { error -> handleSubmitFailure(command, error) }
             }
-            currentCoroutineContext().ensureActive()
-            submitAnswer(command)
-                .onSuccess { result ->
-                    currentCoroutineContext().ensureActive()
-                    turnStateMachine.finishSubmission()
-                    command.audioFile?.let { deleteMediaFile(it) }
-                    savePendingAnswer(null)
-                    currentCoroutineContext().ensureActive()
-                    handleSubmitResult(command, result)
-                }.onFailure { error -> handleSubmitFailure(command, error) }
-        }
     }
 
     @Suppress("ReturnCount")

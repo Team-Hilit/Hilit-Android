@@ -10,6 +10,7 @@ import com.dminus14.app.domain.usecase.CreateInterviewMediaSegmentUseCase
 import com.dminus14.app.domain.usecase.FinalizeInterviewMediaSegmentUseCase
 import com.dminus14.app.domain.usecase.GetInterviewMediaManifestUseCase
 import com.dminus14.app.domain.usecase.GetQuestionAudioStreamUrlUseCase
+import com.dminus14.app.domain.util.runCatchingCancellable
 import com.dminus14.app.feature.interview.api.InterviewErrorType
 import com.dminus14.app.feature.interview.interview.InterviewEffect
 import com.dminus14.app.feature.interview.interview.InterviewIntent
@@ -17,6 +18,7 @@ import com.dminus14.app.feature.interview.interview.InterviewMutation
 import com.dminus14.app.feature.interview.interview.InterviewScreenState
 import com.dminus14.app.feature.interview.interview.InterviewState
 import com.dminus14.app.feature.interview.interview.InterviewWorkflow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -33,6 +35,12 @@ internal class InterviewTurnHandler(
     private val pendingEndRequest: () -> InterviewAnswerEndRequest?,
 ) {
     private val state get() = context.state
+    private var mediaWriteJob: Job? = null
+
+    suspend fun awaitMediaWrites() {
+        mediaWriteJob?.join()
+    }
+
     private var questionPlaybackRetryCount = 0
     private var activeQuestionUrl: String? = null
     private var questionAudioStartedAtMillis: Long? = null
@@ -141,40 +149,41 @@ internal class InterviewTurnHandler(
     }
 
     private fun onRecordingSegmentFinalized(segment: InterviewMediaSegment) {
-        context.launch {
-            val endedAt = state.value.elapsedMillis
-            val sessionId = state.value.sessionId ?: return@launch
-            finalizeMediaSegment(sessionId, segment.sequence, endedAt)
-            currentCoroutineContext().ensureActive()
-            if (isConnectionInterrupted()) return@launch
-            when {
-                segment.type == InterviewMediaSegmentType.QUESTION_VIDEO &&
-                    state.value.screenState == InterviewScreenState.FINISHING -> {
-                    workflow(InterviewWorkflow.WrapUpSegmentFinalized)
-                }
+        mediaWriteJob =
+            context.launch {
+                val endedAt = state.value.elapsedMillis
+                val sessionId = state.value.sessionId ?: return@launch
+                if (!saveSegment(sessionId, segment.sequence, endedAt)) return@launch
+                currentCoroutineContext().ensureActive()
+                if (isConnectionInterrupted() || state.value.isFreezing) return@launch
+                when {
+                    segment.type == InterviewMediaSegmentType.QUESTION_VIDEO &&
+                        state.value.screenState == InterviewScreenState.FINISHING -> {
+                        workflow(InterviewWorkflow.WrapUpSegmentFinalized)
+                    }
 
-                segment.type == InterviewMediaSegmentType.QUESTION_VIDEO &&
-                    state.value.screenState == InterviewScreenState.QUESTION_PLAYING -> {
-                    val sessionId = state.value.sessionId ?: return@launch
-                    val questionId = state.value.questionId ?: return@launch
-                    answerStartedAtMillis = endedAt
-                    context.dispatch(InterviewMutation.AnswerRecordingStarted)
-                    context.sendEffect(
-                        InterviewEffect.StartRecordingSegment(
-                            sessionId = sessionId,
-                            type = InterviewMediaSegmentType.ANSWER_VIDEO,
-                            questionId = questionId,
-                            startedAtMillis = endedAt,
-                        ),
-                    )
-                }
+                    segment.type == InterviewMediaSegmentType.QUESTION_VIDEO &&
+                        state.value.screenState == InterviewScreenState.QUESTION_PLAYING -> {
+                        val sessionId = state.value.sessionId ?: return@launch
+                        val questionId = state.value.questionId ?: return@launch
+                        answerStartedAtMillis = endedAt
+                        context.dispatch(InterviewMutation.AnswerRecordingStarted)
+                        context.sendEffect(
+                            InterviewEffect.StartRecordingSegment(
+                                sessionId = sessionId,
+                                type = InterviewMediaSegmentType.ANSWER_VIDEO,
+                                questionId = questionId,
+                                startedAtMillis = endedAt,
+                            ),
+                        )
+                    }
 
-                segment.type == InterviewMediaSegmentType.ANSWER_VIDEO &&
-                    state.value.screenState == InterviewScreenState.ANSWER_SUBMITTING -> {
-                    createAndExportAnswerAudio()
+                    segment.type == InterviewMediaSegmentType.ANSWER_VIDEO &&
+                        state.value.screenState == InterviewScreenState.ANSWER_SUBMITTING -> {
+                        createAndExportAnswerAudio()
+                    }
                 }
             }
-        }
     }
 
     @Suppress("ReturnCount")
@@ -191,6 +200,7 @@ internal class InterviewTurnHandler(
                         it.finalizeState == InterviewMediaFinalizeState.FINALIZED
                 }.sortedBy { it.sequence }
                 .map { it.mediaRef }
+        if (state.value.isFreezing) return
         if (inputRefs.isEmpty()) {
             context.sendEffect(InterviewEffect.NavigateToError(InterviewErrorType.MIC_DEVICE))
             return
@@ -204,6 +214,7 @@ internal class InterviewTurnHandler(
                 gapBeforeMillis = 0L,
                 extension = "m4a",
             )
+        if (state.value.isFreezing) return
         context.sendEffect(
             InterviewEffect.ExportAnswerAudio(
                 inputRefs = inputRefs,
@@ -222,18 +233,36 @@ internal class InterviewTurnHandler(
     }
 
     private fun onAnswerAudioCompleted(audioSegment: InterviewMediaSegment) {
-        context.launch {
-            val sessionId = state.value.sessionId ?: return@launch
-            finalizeMediaSegment(sessionId, audioSegment.sequence, state.value.elapsedMillis)
-            currentCoroutineContext().ensureActive()
-            val command =
-                createSubmitCommand(
-                    audioSegment.mediaRef,
-                    pendingEndRequest(),
-                )
-            workflow(InterviewWorkflow.SubmitAnswer(command))
-        }
+        mediaWriteJob =
+            context.launch {
+                val sessionId = state.value.sessionId ?: return@launch
+                if (!saveSegment(
+                        sessionId,
+                        audioSegment.sequence,
+                        state.value.elapsedMillis,
+                    )
+                ) {
+                    return@launch
+                }
+                if (state.value.isFreezing) return@launch
+                currentCoroutineContext().ensureActive()
+                val command =
+                    createSubmitCommand(
+                        audioSegment.mediaRef,
+                        pendingEndRequest(),
+                    )
+                workflow(InterviewWorkflow.SubmitAnswer(command))
+            }
     }
+
+    private suspend fun saveSegment(
+        sessionId: Long,
+        sequence: Int,
+        endedAt: Long,
+    ): Boolean =
+        runCatchingCancellable { finalizeMediaSegment(sessionId, sequence, endedAt) }
+            .onFailure { workflow(InterviewWorkflow.FatalExit) }
+            .isSuccess
 
     fun createSubmitCommand(
         audioRef: com.dminus14.app.domain.model.InterviewMediaFileRef?,

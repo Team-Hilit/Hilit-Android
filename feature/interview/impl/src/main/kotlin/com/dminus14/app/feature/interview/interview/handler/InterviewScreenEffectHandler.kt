@@ -38,6 +38,7 @@ class InterviewScreenEffectHandler
     ) {
         private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
         private val countdownTone = ToneGenerator(AudioManager.STREAM_MUSIC, COUNTDOWN_TONE_VOLUME)
+        private var awaitingFreezeFinalization = false
         private var lastSegmentFinalizedAtMillis: Long? = null
 
         val videoCapture: VideoCapture<Recorder>
@@ -80,6 +81,18 @@ class InterviewScreenEffectHandler
             }.onFailure { error ->
                 if (error is CancellationException) throw error
                 onIntent(InterviewIntent.Finalization.ReportRecordingFailure)
+            }
+        }
+
+        fun stopPlayback() = audioPlayer.stop()
+
+        fun freezeMedia(onIntent: (InterviewIntent) -> Unit) {
+            stopPlayback()
+            if (mediaSessionManager.hasActiveSegment) {
+                awaitingFreezeFinalization = true
+                stopRecording()
+            } else {
+                onIntent(InterviewIntent.Recovery.BackgroundRecordingStopped)
             }
         }
 
@@ -179,6 +192,10 @@ class InterviewScreenEffectHandler
                 ) {
                     lastSegmentFinalizedAtMillis = SystemClock.elapsedRealtime()
                     onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(segment))
+                    if (awaitingFreezeFinalization) {
+                        awaitingFreezeFinalization = false
+                        onIntent(InterviewIntent.Recovery.BackgroundRecordingStopped)
+                    }
                 }
 
                 override fun onFinalizeCheckpointRequested(

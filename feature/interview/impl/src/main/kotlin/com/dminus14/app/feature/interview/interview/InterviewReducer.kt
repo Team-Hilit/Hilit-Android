@@ -63,6 +63,8 @@ internal sealed interface InterviewMutation {
 
     data object StartGuideReady : Preparation
 
+    data object FreezeStarted : Timing
+
     data object InterviewStarted : Timing
 
     data object QuestionPlaybackStarted : Turn
@@ -187,6 +189,14 @@ internal object InterviewReducer : MviReducer<InterviewState, InterviewMutation>
         when (mutation) {
             is InterviewMutation.ElapsedTimeUpdated -> {
                 state.copy(elapsedMillis = mutation.elapsedMillis)
+            }
+
+            InterviewMutation.FreezeStarted -> {
+                state.copy(
+                    isFreezing = true,
+                    showFinishConfirmation = false,
+                    showEarlyExitWarning = false,
+                )
             }
 
             InterviewMutation.InterviewStarted -> {

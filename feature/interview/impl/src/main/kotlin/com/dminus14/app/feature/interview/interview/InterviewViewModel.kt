@@ -80,7 +80,7 @@ class InterviewViewModel
                 turnStateMachine = turnStateMachine,
                 workflow = ::onWorkflow,
             )
-        private val turn =
+        private val turn: InterviewTurnHandler =
             InterviewTurnHandler(
                 context = context,
                 getQuestionAudioUrl = getQuestionAudioUrl,
@@ -101,23 +101,66 @@ class InterviewViewModel
             InterviewRecoveryHandler(
                 context = context,
                 checkpointProgress = checkpointProgress,
+                awaitMediaWrites = {
+                    timing.awaitStart()
+                    turn.awaitMediaWrites()
+                },
                 recoveryStore = recoveryStore,
                 fatalExitPrompt = fatalExitPrompt,
                 workflow = ::onWorkflow,
             )
 
         override fun onIntent(intent: InterviewIntent) {
+            if (state.value.isFreezing) {
+                when (intent) {
+                    InterviewIntent.Recovery.BackgroundRecordingStopped -> recovery.finishFreeze()
+                    is InterviewIntent.Turn.ReportRecordingSegmentFinalized -> turn.handle(intent)
+                    is InterviewIntent.Turn.ReportAnswerRecordingCompleted -> turn.handle(intent)
+                    InterviewIntent.Finalization.ReportRecordingFailure -> recovery.beginFatalExit()
+                    else -> Unit
+                }
+                return
+            }
             when (intent) {
-                is InterviewIntent.Preparation -> preparation.handle(intent)
-                is InterviewIntent.Timing -> timing.handle(intent)
-                is InterviewIntent.Turn -> turn.handle(intent)
-                is InterviewIntent.Finalization -> finalization.handle(intent)
-                is InterviewIntent.Recovery -> recovery.handle(intent)
+                is InterviewIntent.Preparation -> {
+                    preparation.handle(intent)
+                }
+
+                is InterviewIntent.Timing -> {
+                    timing.handle(intent)
+                }
+
+                is InterviewIntent.Turn -> {
+                    turn.handle(intent)
+                }
+
+                is InterviewIntent.Finalization -> {
+                    finalization.handle(intent)
+                }
+
+                is InterviewIntent.Recovery -> {
+                    if (intent ==
+                        InterviewIntent.Recovery.ReportAppBackgrounded
+                    ) {
+                        preparation.setForeground(false)
+                    }
+                    if (intent ==
+                        InterviewIntent.Recovery.ReportAppForegrounded
+                    ) {
+                        preparation.setForeground(true)
+                    }
+                    recovery.handle(intent)
+                }
             }
         }
 
         private fun onWorkflow(event: InterviewWorkflow) {
             when (event) {
+                InterviewWorkflow.FreezeStarted -> {
+                    timing.stopTicker()
+                    submission.cancelSubmission()
+                }
+
                 is InterviewWorkflow.Timing -> {
                     onTiming(event)
                 }
@@ -150,10 +193,27 @@ class InterviewViewModel
 
         private fun onTiming(event: InterviewWorkflow.Timing) {
             when (event) {
-                InterviewWorkflow.CheckRestoredHardCap -> timing.reportRestoredHardCap()
-                is InterviewWorkflow.RestoreTimer -> timing.restoreTimer(event.elapsedMillis)
-                InterviewWorkflow.StartTicker -> timing.startTicker()
-                InterviewWorkflow.StopTicker -> timing.stopTicker()
+                InterviewWorkflow.CheckRestoredHardCap -> {
+                    timing.reportRestoredHardCap()
+                }
+
+                is InterviewWorkflow.RestoreTimer -> {
+                    timing.restoreTimer(event.elapsedMillis)
+                }
+
+                InterviewWorkflow.StartConfirmedResume -> {
+                    timing.handle(
+                        InterviewIntent.Timing.StartInterview,
+                    )
+                }
+
+                InterviewWorkflow.StartTicker -> {
+                    timing.startTicker()
+                }
+
+                InterviewWorkflow.StopTicker -> {
+                    timing.stopTicker()
+                }
             }
         }
 
@@ -208,6 +268,10 @@ class InterviewViewModel
 
         private fun onFinalization(event: InterviewWorkflow.Finalization) {
             when (event) {
+                InterviewWorkflow.BackgroundDuringWrapUp -> {
+                    finalization.onBackgrounded()
+                }
+
                 is InterviewWorkflow.BeginFinishing -> {
                     finalization.beginFinishing(event.payload, event.reportGenerating)
                 }

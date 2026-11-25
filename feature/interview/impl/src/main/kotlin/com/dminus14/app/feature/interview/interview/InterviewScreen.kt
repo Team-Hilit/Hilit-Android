@@ -3,11 +3,12 @@
 package com.dminus14.app.feature.interview.interview
 
 import android.Manifest
-import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
@@ -26,10 +27,10 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dminus14.app.core.permission.AppPermission
 import com.dminus14.app.core.permission.rememberAppSettingsLauncher
+import com.dminus14.app.feature.interview.api.ConfirmedInterviewResume
 import com.dminus14.app.feature.interview.api.InterviewErrorType
 import com.dminus14.app.feature.interview.component.InterviewAbortModal
 import com.dminus14.app.feature.interview.component.InterviewCameraPreview
@@ -42,19 +43,22 @@ import com.dminus14.app.feature.interview.interview.layer.InterviewScreenPrepare
 import com.dminus14.designsystem.theme.HilitTheme
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
+@Suppress("LongParameterList")
 @Composable
 fun InterviewScreen(
     modifier: Modifier = Modifier,
     onNavigateHome: () -> Unit = {},
     onNavigateError: (InterviewErrorType) -> Unit = {},
     onInterviewEnded: (InterviewCompletionReason, Long) -> Unit = { _, _ -> },
+    confirmedResume: ConfirmedInterviewResume? = null,
     viewModel: InterviewViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val activity = context as? Activity
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val activity = LocalActivity.current as? ComponentActivity
     val entryPoint =
         remember(context.applicationContext) {
             EntryPointAccessors.fromApplication(
@@ -134,29 +138,22 @@ fun InterviewScreen(
             },
         )
 
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(activity, viewModel) {
         val observer =
             LifecycleEventObserver { _, event ->
-                when (event) {
-                    Lifecycle.Event.ON_START -> {
-                        viewModel.onIntent(
-                            InterviewIntent.Recovery.ReportAppForegrounded,
-                        )
+                val rotating = activity?.isChangingConfigurations == true
+                when {
+                    event == Lifecycle.Event.ON_START -> {
+                        viewModel.onIntent(InterviewIntent.Recovery.ReportAppForegrounded)
                     }
 
-                    Lifecycle.Event.ON_STOP -> {
-                        viewModel.onIntent(
-                            InterviewIntent.Recovery.ReportAppBackgrounded,
-                        )
-                    }
-
-                    else -> {
-                        Unit
+                    isInterviewBackgroundStop(event, rotating) -> {
+                        viewModel.onIntent(InterviewIntent.Recovery.ReportAppBackgrounded)
                     }
                 }
             }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        activity?.lifecycle?.addObserver(observer)
+        onDispose { activity?.lifecycle?.removeObserver(observer) }
     }
 
     LaunchedEffect(entryPoint) {
@@ -181,8 +178,14 @@ fun InterviewScreen(
     }
 
     LaunchedEffect(viewModel) {
-        viewModel.onIntent(InterviewIntent.Preparation.LoadInterview)
+        viewModel.onIntent(
+            confirmedResume?.let {
+                InterviewIntent.Preparation.LoadConfirmedResume(it.sessionId, it.questionId)
+            }
+                ?: InterviewIntent.Preparation.LoadInterview,
+        )
         viewModel.onIntent(InterviewIntent.Recovery.ConsumeRecoveryResult)
+        var answerExport: Job? = null
         viewModel.effect.collect { effect ->
             when (effect) {
                 InterviewEffect.RequestCameraPermission -> {
@@ -217,7 +220,25 @@ fun InterviewScreen(
                 }
 
                 is InterviewEffect.StartRecordingSegment -> {
-                    effectHandler.startRecording(effect, viewModel::onIntent)
+                    if (!viewModel.state.value.isFreezing) {
+                        effectHandler.startRecording(
+                            effect,
+                            viewModel::onIntent,
+                        )
+                    }
+                }
+
+                InterviewEffect.FreezeMedia -> {
+                    answerExport?.cancel()
+                    effectHandler.freezeMedia(viewModel::onIntent)
+                }
+
+                InterviewEffect.StopPlayback -> {
+                    effectHandler.stopPlayback()
+                }
+
+                InterviewEffect.InterviewFrozen -> {
+                    onNavigateHome()
                 }
 
                 InterviewEffect.StopRecordingSegment -> {
@@ -233,7 +254,12 @@ fun InterviewScreen(
                 }
 
                 is InterviewEffect.PlayQuestionAudio -> {
-                    effectHandler.playQuestion(effect.url, viewModel::onIntent)
+                    if (!viewModel.state.value.isFreezing) {
+                        effectHandler.playQuestion(
+                            effect.url,
+                            viewModel::onIntent,
+                        )
+                    }
                 }
 
                 is InterviewEffect.PlayWrapUpMessage -> {
@@ -241,7 +267,10 @@ fun InterviewScreen(
                 }
 
                 is InterviewEffect.ExportAnswerAudio -> {
-                    effectHandler.exportAnswerAudio(effect, viewModel::onIntent)
+                    if (!viewModel.state.value.isFreezing) {
+                        answerExport =
+                            launch { effectHandler.exportAnswerAudio(effect, viewModel::onIntent) }
+                    }
                 }
 
                 InterviewEffect.ShowEarlyFinishAvailable -> {
@@ -305,7 +334,7 @@ fun InterviewScreen(
                 }
 
                 is InterviewEffect.NavigateToError -> {
-                    onNavigateError(effect.errorType)
+                    if (!viewModel.state.value.isFreezing) onNavigateError(effect.errorType)
                 }
 
                 InterviewEffect.PermissionDeniedExitRequested,
@@ -392,6 +421,11 @@ fun InterviewScreen(
         )
     }
 }
+
+internal fun isInterviewBackgroundStop(
+    event: Lifecycle.Event,
+    changingConfigurations: Boolean,
+): Boolean = event == Lifecycle.Event.ON_STOP && !changingConfigurations
 
 @Composable
 fun InterviewContent(

@@ -29,6 +29,7 @@ internal class InterviewFinalizationHandler(
     private var completionReason = InterviewCompletionReason.COMPLETED
     private var wrapUpStartedAtMillis: Long? = null
     private var isWrapUpRecording = false
+    private var wrapUpPlaybackFinished = false
     private var isWrapUpRetryPending = false
     private var finalizationWatchdogJob: Job? = null
     private var wrapUpPayload: String? = null
@@ -109,6 +110,7 @@ internal class InterviewFinalizationHandler(
         val sessionId = state.value.sessionId ?: return
         wrapUpStartedAtMillis = state.value.elapsedMillis
         isWrapUpRecording = true
+        wrapUpPlaybackFinished = false
         startFinalizationWatchdog()
         context.sendEffect(
             InterviewEffect.StartRecordingSegment(
@@ -121,9 +123,17 @@ internal class InterviewFinalizationHandler(
         context.sendEffect(InterviewEffect.PlayWrapUpMessage(payload))
     }
 
+    fun onBackgrounded() {
+        if (!isWrapUpRecording || wrapUpPlaybackFinished) return
+        context.sendEffect(InterviewEffect.StopPlayback)
+        finishWrapUpPlayback()
+    }
+
     @Suppress("TooGenericExceptionCaught")
     private fun finishWrapUpPlayback() {
         val sessionId = state.value.sessionId ?: return
+        if (!isWrapUpRecording || wrapUpPlaybackFinished) return
+        wrapUpPlaybackFinished = true
         val startMillis = wrapUpStartedAtMillis ?: state.value.elapsedMillis
         context.launch {
             try {

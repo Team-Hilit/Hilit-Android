@@ -43,6 +43,11 @@ enum class InterviewFinalizationFailure {
 
 sealed interface InterviewIntent : MviIntent {
     sealed interface Preparation : InterviewIntent {
+        data class LoadConfirmedResume(
+            val sessionId: Long,
+            val questionId: Long,
+        ) : Preparation
+
         data object LoadInterview : Preparation
 
         data object CheckCameraPermission : Preparation
@@ -153,9 +158,11 @@ sealed interface InterviewIntent : MviIntent {
     }
 
     sealed interface Recovery : InterviewIntent {
+        data object ReportAppForegrounded : Recovery
+
         data object ReportAppBackgrounded : Recovery
 
-        data object ReportAppForegrounded : Recovery
+        data object BackgroundRecordingStopped : Recovery
 
         data object ReportNetworkDisconnected : Recovery
 
@@ -177,6 +184,7 @@ data class InterviewState(
     val availableStorageBytes: Long = 0L,
     val hasEnoughStorage: Boolean = false,
     val elapsedMillis: Long = 0L,
+    val isFreezing: Boolean = false,
     val hasSpeechStarted: Boolean = false,
     val isQuestionAudioRetryVisible: Boolean = false,
     val isRequestInFlight: Boolean = false,
@@ -236,6 +244,12 @@ sealed interface InterviewEffect : MviEffect {
         val questionId: Long?,
         val startedAtMillis: Long,
     ) : InterviewEffect
+
+    data object FreezeMedia : InterviewEffect
+
+    data object StopPlayback : InterviewEffect
+
+    data object InterviewFrozen : InterviewEffect
 
     data object StopRecordingSegment : InterviewEffect
 
