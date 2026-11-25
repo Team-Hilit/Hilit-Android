@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.util.UUID
@@ -228,6 +229,29 @@ class InterviewViewModelFinalizationTest {
                         it is InterviewEffect.InterviewEnded
                 }
             assertEquals(1, completionEffects)
+        }
+
+    @Test
+    fun `랩업 중 앱을 떠나면 재생을 끝내고 기존 종료 절차를 계속한다`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val fixture = InterviewViewModelTestFixture()
+            val segment = wrapUpSegment()
+            fixture.manifests[InterviewViewModelTestFixture.SESSION_ID] = manifest(segment)
+            val viewModel = fixture.createViewModel()
+            val effects = mutableListOf<InterviewEffect>()
+            backgroundScope.launch { viewModel.effect.toList(effects) }
+
+            enterFinalization(viewModel, fixture, reportGenerating = false)
+            repeat(2) { viewModel.onIntent(InterviewIntent.Recovery.ReportAppBackgrounded) }
+            viewModel.onIntent(InterviewIntent.Finalization.ReportWrapUpPlaybackCompleted)
+            runCurrent()
+            assertEquals(1, effects.count { it == InterviewEffect.StopPlayback })
+            assertEquals(1, effects.count { it == InterviewEffect.StopRecordingSegment })
+
+            viewModel.onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(segment))
+            runCurrent()
+            assertEquals(1, effects.filterIsInstance<InterviewEffect.InterviewEnded>().size)
+            assertTrue(InterviewEffect.InterviewFrozen !in effects)
         }
 
     private fun TestScope.enterFinalization(

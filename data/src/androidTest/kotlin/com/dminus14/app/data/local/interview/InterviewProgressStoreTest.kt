@@ -32,6 +32,7 @@ class InterviewProgressStoreTest {
                     elapsedAtCheckpointMillis = 3_000L,
                     checkpointedAtEpochMillis = 4_000L,
                     elapsedCheckpointElapsedRealtimeMillis = 5_000L,
+                    isFrozen = true,
                 )
 
             store.write(expected)
