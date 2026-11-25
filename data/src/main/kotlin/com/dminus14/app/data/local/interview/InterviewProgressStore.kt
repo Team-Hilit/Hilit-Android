@@ -57,6 +57,17 @@ class InterviewProgressStore
             store.edit { it.clear() }
         }
 
+        suspend fun clearIfMatching(sessionId: Long): Boolean {
+            var cleared = false
+            store.edit { preferences ->
+                if (preferences[SESSION_ID] == sessionId) {
+                    preferences.clear()
+                    cleared = true
+                }
+            }
+            return cleared
+        }
+
         private fun Preferences.toProgress(): InterviewProgress? {
             val sessionId = this[SESSION_ID]
             val retentionDeadline = this[RETENTION_DEADLINE]

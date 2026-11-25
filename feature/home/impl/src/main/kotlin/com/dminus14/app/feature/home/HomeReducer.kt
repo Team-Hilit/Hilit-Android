@@ -31,6 +31,8 @@ internal sealed interface HomeMutation {
 
     data object SessionAbsent : HomeMutation
 
+    data object SessionEligibilityRefreshStarted : HomeMutation
+
     data class SessionResumable(
         val elapsedMillis: Long,
     ) : HomeMutation
@@ -49,14 +51,11 @@ internal object HomeReducer : MviReducer<HomeState, HomeMutation> {
                 }
 
                 HomeMutation.LoadStopped -> {
-                    copy(isLoading = false)
+                    copy(isLoading = false, shouldOpenSessionOverlayAfterProfileLoad = false)
                 }
 
                 is HomeMutation.ProfileLoaded -> {
-                    copy(
-                        userName = mutation.name,
-                        remainingTicketCount = mutation.tickets,
-                    )
+                    profileLoaded(state, mutation)
                 }
 
                 is HomeMutation.ReportsLoaded -> {
@@ -78,7 +77,10 @@ internal object HomeReducer : MviReducer<HomeState, HomeMutation> {
                 }
 
                 HomeMutation.OverlayDismissed -> {
-                    copy(sessionStartOverlay = null)
+                    copy(
+                        sessionStartOverlay = null,
+                        shouldOpenSessionOverlayAfterProfileLoad = false,
+                    )
                 }
 
                 HomeMutation.TicketsExhausted -> {
@@ -89,6 +91,13 @@ internal object HomeReducer : MviReducer<HomeState, HomeMutation> {
 
                 HomeMutation.SessionAbsent -> {
                     copy(sessionStartOverlay = ticketOverlay(state))
+                }
+
+                HomeMutation.SessionEligibilityRefreshStarted -> {
+                    copy(
+                        sessionStartOverlay = null,
+                        shouldOpenSessionOverlayAfterProfileLoad = true,
+                    )
                 }
 
                 is HomeMutation.SessionResumable -> {
@@ -102,6 +111,18 @@ internal object HomeReducer : MviReducer<HomeState, HomeMutation> {
                 }
             }
         }
+
+    private fun profileLoaded(
+        state: HomeState,
+        mutation: HomeMutation.ProfileLoaded,
+    ): HomeState {
+        val updated = state.copy(userName = mutation.name, remainingTicketCount = mutation.tickets)
+        if (!state.shouldOpenSessionOverlayAfterProfileLoad) return updated
+        return updated.copy(
+            sessionStartOverlay = ticketOverlay(updated),
+            shouldOpenSessionOverlayAfterProfileLoad = false,
+        )
+    }
 
     private fun reportsLoaded(
         state: HomeState,

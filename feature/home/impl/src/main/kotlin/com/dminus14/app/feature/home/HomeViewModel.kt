@@ -62,7 +62,7 @@ class HomeViewModel
                 }
 
                 HomeIntent.ReportSheetCollapsed -> {
-                    session.checkSession()
+                    session.checkSession(reloadHome = ::load)
                 }
 
                 HomeIntent.ClickSessionStart -> {

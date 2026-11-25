@@ -235,6 +235,8 @@ class UserUseCaseTest {
 
         override suspend fun clearProgress() = Unit
 
+        override suspend fun clearProgressIfMatching(sessionId: Long) = false
+
         override suspend fun getManifest(sessionId: Long): InterviewMediaManifest? = null
 
         override suspend fun getUploadManifest(uploadTaskId: String): InterviewMediaManifest? = null
@@ -254,7 +256,7 @@ class UserUseCaseTest {
 
         override suspend fun deleteMediaFile(ref: InterviewMediaFileRef) = Unit
 
-        override suspend fun handoffUploadTask(task: InterviewUploadTask) = Unit
+        override suspend fun handoffUploadTask(task: InterviewUploadTask) = false
 
         override suspend fun getUploadTask(uploadTaskId: String): InterviewUploadTask? = null
 

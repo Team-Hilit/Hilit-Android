@@ -59,6 +59,7 @@ data class HomeState(
      * 트리거 로직은 후속에서 인텐트/UseCase를 통해 채우며, 지금은 상태 필드만 준비해 둔다.
      */
     val sessionStartOverlay: HomeSessionStartOverlayState? = null,
+    internal val shouldOpenSessionOverlayAfterProfileLoad: Boolean = false,
 ) : MviState
 
 sealed interface HomeEffect : MviEffect {

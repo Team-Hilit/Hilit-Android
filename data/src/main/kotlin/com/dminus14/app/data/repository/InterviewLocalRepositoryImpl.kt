@@ -41,6 +41,9 @@ class InterviewLocalRepositoryImpl
             progressStore.clear()
         }
 
+        override suspend fun clearProgressIfMatching(sessionId: Long): Boolean =
+            progressStore.clearIfMatching(sessionId)
+
         override suspend fun getManifest(sessionId: Long): InterviewMediaManifest? =
             withContext(Dispatchers.IO) { manifestStore.read(sessionId) }
 
@@ -68,14 +71,14 @@ class InterviewLocalRepositoryImpl
             withContext(Dispatchers.IO) { fileStore.delete(ref) }
         }
 
-        override suspend fun handoffUploadTask(task: InterviewUploadTask) {
+        override suspend fun handoffUploadTask(task: InterviewUploadTask): Boolean {
             withContext(Dispatchers.IO) {
                 if (uploadTaskStore.read(task.uploadTaskId) != task) {
                     uploadTaskStore.write(task)
                 }
                 fileStore.handoff(task.sessionId, task.uploadTaskId)
             }
-            progressStore.clear()
+            return clearProgressIfMatching(task.sessionId)
         }
 
         override suspend fun getUploadTask(uploadTaskId: String): InterviewUploadTask? =

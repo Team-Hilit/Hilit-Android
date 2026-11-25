@@ -132,8 +132,9 @@ class PrepareInterviewUploadUseCaseTest {
                             failBeforeProgressCleared = false
                             error("progress clear failed")
                         }
-                        progress = null
-                        Unit
+                        (progress?.sessionId == task.sessionId).also { matches ->
+                            if (matches) progress = null
+                        }
                     }
 
                     else -> {
