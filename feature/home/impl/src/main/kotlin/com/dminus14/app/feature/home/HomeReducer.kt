@@ -106,6 +106,7 @@ internal object HomeReducer : MviReducer<HomeState, HomeMutation> {
                             HomeSessionStartOverlayState.InProgress(
                                 userName,
                                 remainingQuestionCount(mutation.elapsedMillis),
+                                mutation.elapsedMillis / MILLIS_PER_SECOND,
                             ),
                     )
                 }

@@ -74,6 +74,7 @@ sealed interface HomeSessionStartOverlayState {
     data class InProgress(
         val userName: String,
         val remainingQuestionCount: Int,
+        val elapsedSeconds: Long = 0,
     ) : HomeSessionStartOverlayState
 
     /** "처음부터 시작" 재확인 다이얼로그 상태. */

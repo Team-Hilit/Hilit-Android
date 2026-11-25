@@ -36,14 +36,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.withStarted
 import com.dminus14.app.core.resources.Res
 import com.dminus14.app.core.resources.home_background
 import com.dminus14.app.feature.home.component.HomeReportSheet
 import com.dminus14.app.feature.home.component.HomeReportSheetCallbacks
 import com.dminus14.app.feature.home.component.HomeReportSheetContent
 import com.dminus14.app.feature.home.component.HomeSheetAnchor
-import com.dminus14.app.feature.interview.api.InterviewRoute
 import com.dminus14.app.feature.interviewreport.api.InterviewReport
 import com.dminus14.app.feature.login.api.Onboarding
 import com.dminus14.app.feature.login.api.Splash
@@ -65,10 +66,13 @@ private val HomeTopBarHeight = 52.dp
 private val FallbackExpandedTop = HomeTopBarHeight
 private const val EXIT_CONFIRM_WINDOW_MILLIS = 3_000L
 
+@Suppress("LongParameterList", "LongMethod")
 @Composable
 fun HomeScreen(
     onNavigate: (Any) -> Unit,
     onReplaceAll: (Any) -> Unit,
+    onResumeConfirmed: (Long, Long) -> Unit,
+    onSessionInvalid: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -80,8 +84,9 @@ fun HomeScreen(
     // 홈은 백스택 최하단이라 뒤로가기 한 번에 바로 종료된다. 두 번째 탭까지 유예를 둔다.
     DoubleBackToExitHandler()
 
-    LaunchedEffect(Unit) {
-        viewModel.onIntent(HomeIntent.Load)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(viewModel, lifecycle) {
+        lifecycle.withStarted { viewModel.onIntent(HomeIntent.Load) }
     }
 
     LaunchedEffect(Unit) {
@@ -104,8 +109,12 @@ fun HomeScreen(
                     onNavigate(OnBoardingInterview)
                 }
 
-                HomeEffect.GoToInterviewRequested -> {
-                    onNavigate(InterviewRoute)
+                is HomeEffect.ResumeConfirmed -> {
+                    onResumeConfirmed(effect.sessionId, effect.questionId)
+                }
+
+                HomeEffect.SessionInvalid -> {
+                    onSessionInvalid()
                 }
 
                 HomeEffect.ReportSheetResetRequested -> {

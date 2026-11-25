@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
+import com.dminus14.app.feature.interview.api.ConfirmedInterviewResume
 import com.dminus14.app.feature.interview.api.InterviewRoute
 import com.dminus14.app.feature.interviewreport.api.InterviewReport
 import com.dminus14.app.feature.interviewreport.api.InterviewReportPlayer
@@ -45,7 +46,9 @@ internal fun resolveAppSystemBarStyle(
         )
 
     return when (route) {
-        is InterviewRoute -> {
+        is ConfirmedInterviewResume,
+        is InterviewRoute,
+        -> {
             AppSystemBarStyle(
                 statusBarColor = null,
                 navigationBarColor = null,
