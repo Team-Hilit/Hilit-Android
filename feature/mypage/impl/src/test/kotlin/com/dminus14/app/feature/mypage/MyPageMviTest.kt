@@ -1,6 +1,9 @@
 package com.dminus14.app.feature.mypage
 
 import com.dminus14.app.core.common.mvi.MviContext
+import com.dminus14.app.domain.model.InterviewReportList
+import com.dminus14.app.domain.model.InterviewReportListItem
+import com.dminus14.app.domain.model.InterviewReportStatus
 import com.dminus14.app.domain.model.PortfolioDeleteResult
 import com.dminus14.app.domain.model.PortfolioOverview
 import com.dminus14.app.domain.model.PortfolioStatus
@@ -50,6 +53,37 @@ class MyPageMviTest {
                 portfolioState = MyPagePortfolioState.Failed("synthetic.pdf", "portfolio"),
             )
         assertEquals(expected, actual)
+    }
+
+    @Test
+    fun `리포트 목록이 갱신되면 존재하는 리포트의 펼침 상태는 유지하고 삭제된 포트폴리오 상태를 반영한다`() {
+        val initial = MyPageState(expandedReportIds = setOf("1", "999"))
+        val refreshed =
+            InterviewReportList(
+                reports =
+                    listOf(
+                        InterviewReportListItem(
+                            sessionId = 1L,
+                            jobType = "ANDROID",
+                            jobTypeLabel = "Android",
+                            careerYears = 3,
+                            interviewedAt = "2026-08-04T00:00:00",
+                            portfolioFileName = "resume.pdf",
+                            portfolioDeleted = true,
+                            jdUrl = null,
+                            reportStatus = InterviewReportStatus.READY,
+                            feedbackAvailable = true,
+                        ),
+                    ),
+            )
+
+        val actual = MyPageReducer.reduce(initial, MyPageMutation.ReportsLoaded(refreshed))
+
+        assertEquals(setOf("1"), actual.expandedReportIds)
+        val report = actual.reports.single()
+        assertTrue(report.isPortfolioDeleted)
+        assertEquals("resume.pdf", report.title)
+        assertEquals("resume.pdf", report.portfolioFileName)
     }
 
     @Test
