@@ -21,6 +21,7 @@ class CheckpointInterviewProgressUseCase
             val realtime = freeze?.elapsedRealtimeMillis ?: clock.elapsedRealtimeMillis()
             val updated =
                 repository.updateProgress { progress ->
+                    if (progress.isFrozen) return@updateProgress progress
                     if (freeze != null && progress.sessionId != freeze.sessionId) {
                         return@updateProgress progress
                     }
@@ -28,7 +29,7 @@ class CheckpointInterviewProgressUseCase
                         retentionRemainingAtCheckpointMillis =
                             calculator.retentionRemainingMillis(progress, epoch, realtime),
                         retentionCheckpointElapsedRealtimeMillis = realtime,
-                        isFrozen = progress.isFrozen || freeze != null,
+                        isFrozen = freeze != null,
                         elapsedAtCheckpointMillis =
                             calculator.elapsedMillis(progress, epoch, realtime),
                         checkpointedAtEpochMillis = epoch,

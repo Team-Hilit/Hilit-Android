@@ -69,8 +69,10 @@ fun InterviewScreen(
     val permissionManager = remember(entryPoint) { entryPoint.permissionManager() }
     val effectHandler = remember(entryPoint) { entryPoint.effectHandler() }
 
-    DisposableEffect(effectHandler) {
-        onDispose(effectHandler::release)
+    DisposableEffect(effectHandler, activity) {
+        onDispose {
+            effectHandler.release(keepPlayback = activity?.isChangingConfigurations == true)
+        }
     }
 
     val microphonePermissionLauncher =

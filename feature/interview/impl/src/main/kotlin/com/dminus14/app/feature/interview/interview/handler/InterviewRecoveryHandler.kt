@@ -105,7 +105,10 @@ internal class InterviewRecoveryHandler(
     }
 
     private fun onNetworkDisconnected() {
-        if (!state.value.screenState.isActiveInterview || connectionInterrupted) return
+        val current = state.value
+        if (!current.screenState.isActiveInterview || current.isFreezing || connectionInterrupted) {
+            return
+        }
         connectionInterrupted = true
         context.launch {
             checkpointProgress()

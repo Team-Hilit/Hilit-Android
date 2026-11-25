@@ -56,9 +56,9 @@ class InterviewScreenEffectHandler
             countdownTone.startTone(ToneGenerator.TONE_PROP_BEEP, COUNTDOWN_TONE_DURATION_MILLIS)
         }
 
-        /** Screen이 컴포지션에서 제거될 때 재생을 중지하고 전용 네이티브 오디오 자원을 해제한다. */
-        fun release() {
-            audioPlayer.stop()
+        /** 구성 변경 동안에는 면접 ViewModel의 재생 콜백과 앱 수명의 플레이어를 유지한다. */
+        fun release(keepPlayback: Boolean) {
+            if (!keepPlayback) audioPlayer.stop()
             countdownTone.release()
         }
 

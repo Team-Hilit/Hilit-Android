@@ -108,7 +108,7 @@ internal class HomeSessionHandler(
 
     fun startSession() {
         val state = context.state.value
-        if (state.isLoading) return
+        if (state.isLoading || actionJob?.isActive == true) return
         when (state.sessionStartOverlay) {
             is HomeSessionStartOverlayState.InProgress -> {
                 context.dispatch(HomeMutation.RestartRequested)
@@ -139,7 +139,14 @@ internal class HomeSessionHandler(
         context.dispatch(HomeMutation.LoadStarted)
         actionJob =
             context.launch {
-                if (getInterviewProgressUseCase()?.sessionId != sessionId) {
+                val progress =
+                    runCatchingCancellable { getInterviewProgressUseCase() }
+                        .rethrowHomeCancellation()
+                        .getOrElse { error ->
+                            context.handleHomeFailure(error)
+                            return@launch
+                        }
+                if (progress?.sessionId != sessionId) {
                     pendingSessionId = null
                     context.dispatch(HomeMutation.LoadStopped)
                     context.dispatch(HomeMutation.SessionAbsent)
