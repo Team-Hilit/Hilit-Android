@@ -3,6 +3,7 @@ package com.dminus14.app.feature.interview.interview.handler
 import com.dminus14.app.core.common.modal.GlobalModalResult
 import com.dminus14.app.core.common.mvi.MviContext
 import com.dminus14.app.domain.usecase.CheckpointInterviewProgressUseCase
+import com.dminus14.app.domain.util.runCatchingCancellable
 import com.dminus14.app.feature.interview.api.InterviewErrorType
 import com.dminus14.app.feature.interview.interview.InterviewEffect
 import com.dminus14.app.feature.interview.interview.InterviewFatalExitPrompt
@@ -20,12 +21,14 @@ internal class InterviewRecoveryHandler(
     private val checkpointProgress: CheckpointInterviewProgressUseCase,
     private val recoveryStore: InterviewRecoveryStore,
     private val fatalExitPrompt: InterviewFatalExitPrompt,
+    private val awaitMediaWrites: suspend () -> Unit,
     private val workflow: (InterviewWorkflow) -> Unit,
 ) {
     private val state get() = context.state
     var connectionInterrupted = false
         private set
-    private var wasBackgrounded = false
+    private var freeze: CheckpointInterviewProgressUseCase.Freeze? = null
+    private var freezeCheckpointJob: Job? = null
     private var pendingRecoveryResult: InterviewRecoveryStore.Result? = null
     private var fatalExitJob: Job? = null
 
@@ -35,15 +38,17 @@ internal class InterviewRecoveryHandler(
                 onBackgrounded()
             }
 
-            InterviewIntent.Recovery.ReportAppForegrounded -> {
-                onForegrounded()
+            InterviewIntent.Recovery.BackgroundRecordingStopped -> {
+                finishFreeze()
             }
 
             InterviewIntent.Recovery.ReportNetworkDisconnected -> {
                 onNetworkDisconnected()
             }
 
-            InterviewIntent.Recovery.ReportNetworkRestored -> {
+            InterviewIntent.Recovery.ReportAppForegrounded,
+            InterviewIntent.Recovery.ReportNetworkRestored,
+            -> {
                 Unit
             }
 
@@ -54,6 +59,7 @@ internal class InterviewRecoveryHandler(
     }
 
     fun beginFatalExit() {
+        workflow(InterviewWorkflow.StopTicker)
         workflow(InterviewWorkflow.ClearSubmissionBusyState)
         context.dispatch(InterviewMutation.EndDialogsClosed)
         if (fatalExitJob != null) return
@@ -66,26 +72,43 @@ internal class InterviewRecoveryHandler(
     }
 
     private fun onBackgrounded() {
-        if (!state.value.screenState.isActiveInterview) return
-        wasBackgrounded = true
-        workflow(InterviewWorkflow.StopTicker)
-        context.launch { checkpointProgress() }
-        context.sendEffect(InterviewEffect.StopRecordingSegment)
+        if (state.value.screenState == InterviewScreenState.FINISHING) {
+            workflow(InterviewWorkflow.BackgroundDuringWrapUp)
+        } else if (canFreeze()) {
+            freeze = checkpointProgress.markFreeze(state.value.sessionId ?: return)
+            context.dispatch(InterviewMutation.FreezeStarted)
+            workflow(InterviewWorkflow.FreezeStarted)
+            context.sendEffect(InterviewEffect.FreezeMedia)
+        }
     }
 
-    private fun onForegrounded() {
-        if (!state.value.screenState.isActiveInterview || !wasBackgrounded) return
-        wasBackgrounded = false
-        connectionInterrupted = true
-        context.launch {
-            checkpointProgress()
-            context.sendEffect(InterviewEffect.NavigateToError(InterviewErrorType.NETWORK))
-        }
-        workflow(InterviewWorkflow.StartTicker)
+    private fun canFreeze(): Boolean {
+        if (!state.value.screenState.isActiveInterview) return false
+        return !state.value.isFreezing && !connectionInterrupted && fatalExitJob == null
+    }
+
+    fun finishFreeze() {
+        val mark = freeze ?: return
+        if (freezeCheckpointJob != null) return
+        freezeCheckpointJob =
+            context.launch {
+                awaitMediaWrites()
+                if (fatalExitJob != null) return@launch
+                runCatchingCancellable {
+                    check(checkpointProgress(mark))
+                }.onSuccess {
+                    context.sendEffect(InterviewEffect.InterviewFrozen)
+                }.onFailure {
+                    beginFatalExit()
+                }
+            }
     }
 
     private fun onNetworkDisconnected() {
-        if (!state.value.screenState.isActiveInterview || connectionInterrupted) return
+        val current = state.value
+        if (!current.screenState.isActiveInterview || current.isFreezing || connectionInterrupted) {
+            return
+        }
         connectionInterrupted = true
         context.launch {
             checkpointProgress()
@@ -120,7 +143,6 @@ internal class InterviewRecoveryHandler(
 
     private fun applyRecoveryResult(result: InterviewRecoveryStore.Result) {
         connectionInterrupted = false
-        wasBackgrounded = false
         workflow(InterviewWorkflow.CompletionReasonChanged(result.completionReason))
         if (result.sessionEnded) {
             workflow(

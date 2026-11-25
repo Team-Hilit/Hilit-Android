@@ -68,7 +68,10 @@ class CameraXInterviewVideoRecorder
 
                 is VideoRecordEvent.Finalize -> {
                     recording = null
-                    if (event.hasError()) {
+                    val sourceStoppedWithData =
+                        event.error == VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE &&
+                            event.recordingStats.numBytesRecorded > 0
+                    if (event.hasError() && !sourceStoppedWithData) {
                         val cause = event.cause ?: IllegalStateException("Recording failed")
                         onEvent(InterviewRecordingEvent.Failed(cause))
                     } else {

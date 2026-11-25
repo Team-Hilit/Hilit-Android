@@ -14,7 +14,8 @@ class FinalizeInterviewMediaSegmentUseCase
             sequence: Int,
             endedAtMillis: Long,
         ) {
-            val manifest = repository.getManifest(sessionId) ?: return
+            val manifest = checkNotNull(repository.getManifest(sessionId))
+            check(manifest.segments.any { it.sequence == sequence })
             repository.saveManifest(
                 manifest.copy(
                     segments =

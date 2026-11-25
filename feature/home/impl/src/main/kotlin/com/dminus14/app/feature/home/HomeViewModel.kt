@@ -4,6 +4,8 @@ import com.dminus14.app.core.common.mvi.MviViewModel
 import com.dminus14.app.domain.exception.UserNotFoundException
 import com.dminus14.app.domain.usecase.AbandonInterviewUseCase
 import com.dminus14.app.domain.usecase.CheckUserProfileUseCase
+import com.dminus14.app.domain.usecase.ConfirmInterviewResumeUseCase
+import com.dminus14.app.domain.usecase.DeleteInterviewSessionUseCase
 import com.dminus14.app.domain.usecase.GetInterviewElapsedTimeUseCase
 import com.dminus14.app.domain.usecase.GetInterviewProgressUseCase
 import com.dminus14.app.domain.usecase.GetInterviewReportListUseCase
@@ -24,6 +26,8 @@ class HomeViewModel
         getInterviewResumeUseCase: GetInterviewResumeUseCase,
         getInterviewProgressUseCase: GetInterviewProgressUseCase,
         getInterviewElapsedTimeUseCase: GetInterviewElapsedTimeUseCase,
+        confirmResume: ConfirmInterviewResumeUseCase,
+        deleteSession: DeleteInterviewSessionUseCase,
         abandonInterviewUseCase: AbandonInterviewUseCase,
         retainInterviewSessionForCleanupUseCase: RetainInterviewSessionForCleanupUseCase,
     ) : MviViewModel<HomeIntent, HomeState, HomeEffect>(HomeState()) {
@@ -34,8 +38,11 @@ class HomeViewModel
                 getInterviewResumeUseCase,
                 getInterviewProgressUseCase,
                 getInterviewElapsedTimeUseCase,
+                confirmResume,
+                deleteSession,
                 abandonInterviewUseCase,
                 retainInterviewSessionForCleanupUseCase,
+                refreshHome = ::load,
             )
         private var loadJob: Job? = null
 
@@ -62,7 +69,7 @@ class HomeViewModel
                 }
 
                 HomeIntent.ReportSheetCollapsed -> {
-                    session.checkSession(reloadHome = ::load)
+                    session.checkSession()
                 }
 
                 HomeIntent.ClickSessionStart -> {
@@ -85,6 +92,7 @@ class HomeViewModel
             loadJob =
                 context.launch {
                     if (!loadProfile()) return@launch
+                    session.checkSession(frozenOnly = true)
                     val reportList =
                         getInterviewReportListUseCase()
                             .rethrowHomeCancellation()

@@ -82,11 +82,13 @@ internal class InterviewViewModelTestFixture {
     var fatalPromptCount = 0
     private var mediaSequence = 0
 
+    var clockDeltaMillis = 0L
+
     val clock =
         object : InterviewClock {
-            override fun currentEpochMillis(): Long = NOW_EPOCH_MILLIS
+            override fun currentEpochMillis(): Long = NOW_EPOCH_MILLIS + clockDeltaMillis
 
-            override fun elapsedRealtimeMillis(): Long = NOW_REALTIME_MILLIS
+            override fun elapsedRealtimeMillis(): Long = NOW_REALTIME_MILLIS + clockDeltaMillis
         }
 
     private val workController =
@@ -264,17 +266,20 @@ internal class InterviewViewModelTestFixture {
             }
         }
 
-    fun createViewModel(): InterviewViewModel {
+    fun createViewModel(
+        submissions: InterviewRepository = interviewRepository,
+    ): InterviewViewModel {
         val calculator = InterviewTimeCalculator()
+        val getProgress = GetInterviewProgressUseCase(localRepository, clock, calculator)
         return InterviewViewModel(
             cleanupExpiredData =
                 CleanupExpiredInterviewDataUseCase(
                     localRepository,
                     workController,
                     clock,
-                    calculator,
+                    getProgress,
                 ),
-            getProgress = GetInterviewProgressUseCase(localRepository),
+            getProgress = getProgress,
             getSession = GetInterviewSessionUseCase(interviewRepository),
             startTimer = StartInterviewTimerUseCase(localRepository, clock),
             getElapsedTime = GetInterviewElapsedTimeUseCase(localRepository, clock, calculator),
@@ -284,7 +289,7 @@ internal class InterviewViewModelTestFixture {
             getQuestionAudioUrl = GetQuestionAudioStreamUrlUseCase(interviewRepository),
             createMediaSegment = CreateInterviewMediaSegmentUseCase(localRepository),
             finalizeMediaSegment = FinalizeInterviewMediaSegmentUseCase(localRepository),
-            submitAnswer = SubmitAnswerUseCase(interviewRepository),
+            submitAnswer = SubmitAnswerUseCase(submissions),
             deleteMediaFile = DeleteInterviewMediaFileUseCase(localRepository),
             savePendingAnswer = SavePendingInterviewAnswerUseCase(localRepository),
             saveWrapUpRange = SaveInterviewWrapUpRangeUseCase(localRepository),

@@ -38,7 +38,7 @@ sealed interface HomeIntent : MviIntent {
      */
     data object ClickSessionOverlayDismiss : HomeIntent
 
-    /** 진행 중 면접 "이어서 진행". Interview 화면으로 이동하면 그 화면이 재개를 이어받는다. */
+    /** 진행 중 면접 "이어서 진행". 서버에 재개를 확정하고 최신 질문으로 이동한다. */
     data object ClickSessionResume : HomeIntent
 }
 
@@ -81,7 +81,12 @@ sealed interface HomeEffect : MviEffect {
     data object GoToOnboardingInterviewRequested : HomeEffect
 
     /** 진행 중 면접을 이어서 진행하기 위해 Interview 화면으로 이동해야 함을 알린다. */
-    data object GoToInterviewRequested : HomeEffect
+    data class ResumeConfirmed(
+        val sessionId: Long,
+        val questionId: Long,
+    ) : HomeEffect
+
+    data object SessionInvalid : HomeEffect
 
     /** 세션 오버레이를 닫은 뒤 리포트 시트를 중간(Peek)으로 되돌려야 함을 알린다. */
     data object ReportSheetResetRequested : HomeEffect

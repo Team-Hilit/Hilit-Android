@@ -4,9 +4,9 @@ import android.content.Context
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
-import androidx.datastore.preferences.preferencesDataStoreFile
 import com.dminus14.app.domain.model.InterviewProgress
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -74,6 +74,7 @@ class InterviewProgressStore
             if (sessionId == null || retentionDeadline == null) return null
             return InterviewProgress(
                 sessionId = sessionId,
+                isFrozen = this[FROZEN] ?: false,
                 retentionDeadlineEpochMillis = retentionDeadline,
                 retentionRemainingAtCheckpointMillis = this[RETENTION_REMAINING] ?: 0L,
                 retentionCheckpointElapsedRealtimeMillis = this[RETENTION_REALTIME],
@@ -85,6 +86,7 @@ class InterviewProgressStore
         }
 
         private fun MutablePreferences.putProgress(progress: InterviewProgress) {
+            if (progress.isFrozen) this[FROZEN] = true else remove(FROZEN)
             this[SESSION_ID] = progress.sessionId
             this[RETENTION_DEADLINE] = progress.retentionDeadlineEpochMillis
             this[RETENTION_REMAINING] = progress.retentionRemainingAtCheckpointMillis
@@ -107,6 +109,7 @@ class InterviewProgressStore
 
         private companion object {
             const val FILE_NAME = "interview_progress.preferences_pb"
+            val FROZEN = booleanPreferencesKey("is_frozen")
             val SESSION_ID = longPreferencesKey("session_id")
             val RETENTION_DEADLINE = longPreferencesKey("retention_deadline_epoch_millis")
             val RETENTION_REMAINING = longPreferencesKey("retention_remaining_millis")

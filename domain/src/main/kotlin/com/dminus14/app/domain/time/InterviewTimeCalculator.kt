@@ -14,6 +14,7 @@ class InterviewTimeCalculator
             currentElapsedRealtimeMillis: Long,
         ): Long {
             val checkpointElapsed = progress.elapsedAtCheckpointMillis ?: 0L
+            if (progress.isFrozen) return checkpointElapsed.coerceIn(0L, HARD_CAP_MILLIS)
             val monotonicDelta =
                 progress.elapsedCheckpointElapsedRealtimeMillis?.let { checkpoint ->
                     // 부팅이 바뀌면 단조 시계가 되감기므로 epoch 기반 복원으로 넘긴다.

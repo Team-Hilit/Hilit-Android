@@ -38,9 +38,15 @@ internal sealed interface InterviewWorkflow {
         val elapsedMillis: Long,
     ) : Timing
 
+    data object StartConfirmedResume : Timing
+
     data object StartTicker : Timing
 
     data object StopTicker : Timing
+
+    data object FreezeStarted : InterviewWorkflow
+
+    data object BackgroundDuringWrapUp : Finalization
 
     data class PlayCurrentQuestion(
         val resetRetry: Boolean,

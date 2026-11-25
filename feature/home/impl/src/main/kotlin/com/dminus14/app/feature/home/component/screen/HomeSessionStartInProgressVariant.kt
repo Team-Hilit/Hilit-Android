@@ -48,7 +48,7 @@ internal fun HomeSessionStartInProgressVariant(
                         modifier = Modifier.size(IconSize),
                     )
                     Text(
-                        text = "면접 상태",
+                        text = "진행 시간 ${state.elapsedSeconds / 60}분 ${state.elapsedSeconds % 60}초",
                         style = HilitTheme.typography.body9,
                         color = HilitTheme.colors.gray500,
                         modifier = Modifier.padding(top = IconToTextSpacing),

@@ -9,6 +9,7 @@ import com.dminus14.app.domain.model.InterviewResumeStatus
 import com.dminus14.app.domain.model.InterviewTerminalStatus
 import com.dminus14.app.domain.model.InterviewTicketOutcome
 import com.dminus14.app.domain.model.InterviewUploadTaskStatus
+import com.dminus14.app.domain.time.InterviewTimeCalculator
 import com.dminus14.app.domain.usecase.AbandonInterviewUseCase
 import com.dminus14.app.domain.usecase.ConfirmInterviewResumeUseCase
 import com.dminus14.app.domain.usecase.DeleteInterviewSessionUseCase
@@ -186,7 +187,12 @@ class InterviewErrorViewModelTest {
         fixture: InterviewViewModelTestFixture,
         recoveryStore: InterviewRecoveryStore = InterviewRecoveryStore(),
     ) = InterviewErrorViewModel(
-        getProgress = GetInterviewProgressUseCase(fixture.localRepository),
+        getProgress =
+            GetInterviewProgressUseCase(
+                fixture.localRepository,
+                fixture.clock,
+                InterviewTimeCalculator(),
+            ),
         getManifest = GetInterviewMediaManifestUseCase(fixture.localRepository),
         getResume = GetInterviewResumeUseCase(fixture.interviewRepository),
         confirmResume = ConfirmInterviewResumeUseCase(fixture.interviewRepository),

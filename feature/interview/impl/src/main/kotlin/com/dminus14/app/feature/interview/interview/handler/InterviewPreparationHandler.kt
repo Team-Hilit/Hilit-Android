@@ -40,12 +40,19 @@ internal class InterviewPreparationHandler(
     private val state get() = context.state
     private var preparationJob: Job? = null
     private var preparationStageJob: Job? = null
+    private var isConfirmedResume = false
+    private var isForeground = true
     private var hasLoaded = false
     private var isDeviceCheckMinDurationElapsed = false
     private var isQuestionPreparingMinDurationElapsed = false
 
+    @Suppress("CyclomaticComplexMethod")
     fun handle(intent: InterviewIntent.Preparation) {
         when (intent) {
+            is InterviewIntent.Preparation.LoadConfirmedResume -> {
+                loadInterview(intent)
+            }
+
             InterviewIntent.Preparation.LoadInterview -> {
                 loadInterview()
             }
@@ -102,12 +109,17 @@ internal class InterviewPreparationHandler(
             }
 
             InterviewIntent.Preparation.ClickPermissionDeniedBack -> {
-                clearBeforeFirstQuestion(InterviewEffect.PermissionDeniedExitRequested)
+                val effect = InterviewEffect.PermissionDeniedExitRequested
+                if (isConfirmedResume) {
+                    context.sendEffect(effect)
+                } else {
+                    clearBeforeFirstQuestion(effect)
+                }
             }
         }
     }
 
-    private fun loadInterview() {
+    private fun loadInterview(resume: InterviewIntent.Preparation.LoadConfirmedResume? = null) {
         if (hasLoaded) {
             workflow(InterviewWorkflow.ConsumeRecoveryResult)
             return
@@ -117,11 +129,26 @@ internal class InterviewPreparationHandler(
         context.launch {
             cleanupExpiredData()
             val progress = getProgress()
-            if (progress == null) {
+            if (progress == null || (resume != null && progress.sessionId != resume.sessionId)) {
                 context.sendEffect(InterviewEffect.PrerequisiteMissing)
                 return@launch
             }
             context.dispatch(InterviewMutation.SessionLoaded(progress.sessionId))
+            if (resume != null) {
+                isConfirmedResume = true
+                val elapsed = getElapsedTime()
+                workflow(InterviewWorkflow.RestoreTimer(elapsed))
+                context.dispatch(InterviewMutation.ElapsedTimeUpdated(elapsed))
+                context.dispatch(InterviewMutation.QuestionPrepared(resume.questionId))
+                context.sendEffect(InterviewEffect.RequestCameraPermission)
+                context.sendEffect(InterviewEffect.CheckStorageAvailability)
+                updatePreparationGate()
+                return@launch
+            }
+            if (progress.isFrozen) {
+                context.sendEffect(InterviewEffect.InterviewFrozen)
+                return@launch
+            }
             if (progress.timerStartedAtEpochMillis != null) {
                 val elapsedMillis =
                     getElapsedTime().coerceIn(
@@ -198,9 +225,21 @@ internal class InterviewPreparationHandler(
         workflow(InterviewWorkflow.TryApplyPendingRecovery)
     }
 
+    fun setForeground(foreground: Boolean) {
+        isForeground = foreground
+        if (foreground) updatePreparationGate()
+    }
+
     private fun updatePreparationGate() {
         val current = state.value
         if (!current.isReadyToStart) return
+        if (isConfirmedResume) {
+            if (isForeground && current.screenState == InterviewScreenState.DEVICE_CHECK) {
+                context.dispatch(InterviewMutation.StartGuideReady)
+                workflow(InterviewWorkflow.StartConfirmedResume)
+            }
+            return
+        }
 
         when (current.screenState) {
             InterviewScreenState.DEVICE_CHECK -> {

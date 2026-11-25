@@ -38,6 +38,7 @@ class InterviewScreenEffectHandler
     ) {
         private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
         private val countdownTone = ToneGenerator(AudioManager.STREAM_MUSIC, COUNTDOWN_TONE_VOLUME)
+        private var awaitingFreezeFinalization = false
         private var lastSegmentFinalizedAtMillis: Long? = null
 
         val videoCapture: VideoCapture<Recorder>
@@ -55,9 +56,9 @@ class InterviewScreenEffectHandler
             countdownTone.startTone(ToneGenerator.TONE_PROP_BEEP, COUNTDOWN_TONE_DURATION_MILLIS)
         }
 
-        /** Screen이 컴포지션에서 제거될 때 재생을 중지하고 전용 네이티브 오디오 자원을 해제한다. */
-        fun release() {
-            audioPlayer.stop()
+        /** 구성 변경 동안에는 면접 ViewModel의 재생 콜백과 앱 수명의 플레이어를 유지한다. */
+        fun release(keepPlayback: Boolean) {
+            if (!keepPlayback) audioPlayer.stop()
             countdownTone.release()
         }
 
@@ -80,6 +81,18 @@ class InterviewScreenEffectHandler
             }.onFailure { error ->
                 if (error is CancellationException) throw error
                 onIntent(InterviewIntent.Finalization.ReportRecordingFailure)
+            }
+        }
+
+        fun stopPlayback() = audioPlayer.stop()
+
+        fun freezeMedia(onIntent: (InterviewIntent) -> Unit) {
+            stopPlayback()
+            if (mediaSessionManager.hasActiveSegment) {
+                awaitingFreezeFinalization = true
+                stopRecording()
+            } else {
+                onIntent(InterviewIntent.Recovery.BackgroundRecordingStopped)
             }
         }
 
@@ -179,6 +192,10 @@ class InterviewScreenEffectHandler
                 ) {
                     lastSegmentFinalizedAtMillis = SystemClock.elapsedRealtime()
                     onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(segment))
+                    if (awaitingFreezeFinalization) {
+                        awaitingFreezeFinalization = false
+                        onIntent(InterviewIntent.Recovery.BackgroundRecordingStopped)
+                    }
                 }
 
                 override fun onFinalizeCheckpointRequested(

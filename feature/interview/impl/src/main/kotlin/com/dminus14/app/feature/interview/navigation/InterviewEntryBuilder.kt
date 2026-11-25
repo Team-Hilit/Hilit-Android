@@ -1,6 +1,7 @@
 package com.dminus14.app.feature.interview.navigation
 
 import androidx.navigation3.runtime.EntryProviderScope
+import com.dminus14.app.feature.interview.api.ConfirmedInterviewResume
 import com.dminus14.app.feature.interview.api.InterviewErrorRoute
 import com.dminus14.app.feature.interview.api.InterviewRoute
 import com.dminus14.app.feature.interview.error.InterviewErrorScreen
@@ -16,6 +17,15 @@ fun EntryProviderScope<Any>.interviewEntryBuilder(
 ) {
     entry<InterviewRoute> {
         InterviewScreen(
+            onNavigateHome = onNavigateHome,
+            onNavigateError = onNavigateError,
+            onInterviewEnded = onInterviewEnded,
+        )
+    }
+
+    entry<ConfirmedInterviewResume> { resume ->
+        InterviewScreen(
+            confirmedResume = resume,
             onNavigateHome = onNavigateHome,
             onNavigateError = onNavigateError,
             onInterviewEnded = onInterviewEnded,

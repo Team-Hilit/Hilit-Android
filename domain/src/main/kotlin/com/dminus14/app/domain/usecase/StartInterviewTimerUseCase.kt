@@ -10,20 +10,24 @@ class StartInterviewTimerUseCase
         private val repository: InterviewLocalRepository,
         private val clock: InterviewClock,
     ) {
-        suspend operator fun invoke() {
+        suspend operator fun invoke(sessionId: Long) {
             val now = clock.currentEpochMillis()
             val realtime = clock.elapsedRealtimeMillis()
-            repository.updateProgress { progress ->
-                if (progress.timerStartedAtEpochMillis != null) {
-                    progress
-                } else {
-                    progress.copy(
-                        timerStartedAtEpochMillis = now,
-                        elapsedAtCheckpointMillis = 0L,
-                        checkpointedAtEpochMillis = now,
-                        elapsedCheckpointElapsedRealtimeMillis = realtime,
-                    )
+            val updated =
+                repository.updateProgress { progress ->
+                    check(progress.sessionId == sessionId)
+                    if (progress.timerStartedAtEpochMillis != null && !progress.isFrozen) {
+                        progress
+                    } else {
+                        progress.copy(
+                            timerStartedAtEpochMillis = progress.timerStartedAtEpochMillis ?: now,
+                            elapsedAtCheckpointMillis = progress.elapsedAtCheckpointMillis ?: 0L,
+                            isFrozen = false,
+                            checkpointedAtEpochMillis = now,
+                            elapsedCheckpointElapsedRealtimeMillis = realtime,
+                        )
+                    }
                 }
-            }
+            checkNotNull(updated)
         }
     }

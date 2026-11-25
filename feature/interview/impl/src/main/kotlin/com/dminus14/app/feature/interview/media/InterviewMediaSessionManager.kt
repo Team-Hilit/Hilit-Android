@@ -22,6 +22,8 @@ class InterviewMediaSessionManager
         private val mediaFileResolver: InterviewMediaFileResolver,
     ) {
         private var activeSegment: InterviewMediaSegment? = null
+        val hasActiveSegment: Boolean get() = activeSegment != null
+
         private var listener: Listener? = null
         private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 

@@ -20,6 +20,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.chottulink.lib.ChottuLink
 import com.dminus14.app.error.GlobalErrorHost
 import com.dminus14.app.feature.feedback.api.FeedbackOnboarding
+import com.dminus14.app.feature.interview.api.ConfirmedInterviewResume
 import com.dminus14.app.feature.interview.api.InterviewErrorRoute
 import com.dminus14.app.feature.interview.api.InterviewRoute
 import com.dminus14.app.feature.onboarding.api.OnBoardingInterview
@@ -157,7 +158,8 @@ class MainActivity : ComponentActivity() {
      */
     private fun isInterviewFlowInProgress(): Boolean =
         navigationState.navigator.backStack.any { route ->
-            route is OnBoardingInterview || route is InterviewRoute || route is InterviewErrorRoute
+            route is OnBoardingInterview || route is InterviewRoute ||
+                route is ConfirmedInterviewResume || route is InterviewErrorRoute
         }
 
     private companion object {

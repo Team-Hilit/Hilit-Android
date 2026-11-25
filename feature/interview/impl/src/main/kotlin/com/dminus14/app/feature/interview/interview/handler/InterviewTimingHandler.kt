@@ -5,6 +5,7 @@ import com.dminus14.app.domain.model.InterviewAnswerEndRequest
 import com.dminus14.app.domain.model.InterviewMediaSegmentType
 import com.dminus14.app.domain.usecase.GetInterviewElapsedTimeUseCase
 import com.dminus14.app.domain.usecase.StartInterviewTimerUseCase
+import com.dminus14.app.domain.util.runCatchingCancellable
 import com.dminus14.app.feature.interview.InterviewConstants
 import com.dminus14.app.feature.interview.interview.InterviewEffect
 import com.dminus14.app.feature.interview.interview.InterviewIntent
@@ -59,8 +60,12 @@ internal class InterviewTimingHandler(
         val questionId = current.questionId ?: return
         startJob =
             context.launch {
-                startTimer()
                 context.dispatch(InterviewMutation.InterviewStarted)
+                runCatchingCancellable { startTimer(sessionId) }.onFailure {
+                    workflow(InterviewWorkflow.FatalExit)
+                    return@launch
+                }
+                if (state.value.isFreezing) return@launch
                 context.sendEffect(
                     InterviewEffect.StartRecordingSegment(
                         sessionId = sessionId,
@@ -71,7 +76,12 @@ internal class InterviewTimingHandler(
                 )
                 workflow(InterviewWorkflow.PlayCurrentQuestion(true))
                 startTicker()
+                reportRestoredHardCap()
             }
+    }
+
+    suspend fun awaitStart() {
+        startJob?.join()
     }
 
     fun startTicker() {
