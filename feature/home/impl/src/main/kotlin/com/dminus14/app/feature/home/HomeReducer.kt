@@ -53,10 +53,7 @@ internal object HomeReducer : MviReducer<HomeState, HomeMutation> {
                 }
 
                 is HomeMutation.ProfileLoaded -> {
-                    copy(
-                        userName = mutation.name,
-                        remainingTicketCount = mutation.tickets,
-                    )
+                    profileLoaded(state, mutation)
                 }
 
                 is HomeMutation.ReportsLoaded -> {
@@ -102,6 +99,20 @@ internal object HomeReducer : MviReducer<HomeState, HomeMutation> {
                 }
             }
         }
+
+    private fun profileLoaded(
+        state: HomeState,
+        mutation: HomeMutation.ProfileLoaded,
+    ): HomeState {
+        val updated = state.copy(userName = mutation.name, remainingTicketCount = mutation.tickets)
+        return when (state.sessionStartOverlay) {
+            is HomeSessionStartOverlayState.Start,
+            is HomeSessionStartOverlayState.NoTickets,
+            -> updated.copy(sessionStartOverlay = ticketOverlay(updated))
+
+            else -> updated
+        }
+    }
 
     private fun reportsLoaded(
         state: HomeState,

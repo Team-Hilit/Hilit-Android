@@ -126,6 +126,12 @@ internal class InterviewViewModelTestFixture {
                     Unit.also { progress = null }
                 }
 
+                "clearProgressIfMatching" -> {
+                    (progress?.sessionId == args[0] as Long).also { matches ->
+                        if (matches) progress = null
+                    }
+                }
+
                 "getManifest" -> {
                     manifests[args[0] as Long]
                 }
@@ -169,9 +175,9 @@ internal class InterviewViewModelTestFixture {
 
                 "handoffUploadTask" -> {
                     val task = args[0] as InterviewUploadTask
-                    Unit.also {
-                        uploadTasks[task.uploadTaskId] = task
-                        progress = null
+                    uploadTasks[task.uploadTaskId] = task
+                    (progress?.sessionId == task.sessionId).also { matches ->
+                        if (matches) progress = null
                     }
                 }
 

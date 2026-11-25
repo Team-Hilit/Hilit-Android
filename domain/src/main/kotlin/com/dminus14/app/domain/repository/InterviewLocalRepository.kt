@@ -19,6 +19,9 @@ interface InterviewLocalRepository {
 
     suspend fun clearProgress()
 
+    /** 현재 진행 상태가 지정한 세션에 속할 때만 원자적으로 제거한다. */
+    suspend fun clearProgressIfMatching(sessionId: Long): Boolean
+
     suspend fun getManifest(sessionId: Long): InterviewMediaManifest?
 
     suspend fun getUploadManifest(uploadTaskId: String): InterviewMediaManifest?
@@ -38,7 +41,8 @@ interface InterviewLocalRepository {
 
     suspend fun deleteMediaFile(ref: InterviewMediaFileRef)
 
-    suspend fun handoffUploadTask(task: InterviewUploadTask)
+    /** 미디어를 인계하고, 인계한 세션의 진행 상태를 제거했는지 반환한다. */
+    suspend fun handoffUploadTask(task: InterviewUploadTask): Boolean
 
     suspend fun getUploadTask(uploadTaskId: String): InterviewUploadTask?
 

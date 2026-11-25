@@ -764,6 +764,8 @@ class HomeViewModelTest {
     @Test
     fun `로컬 progress resume 조회 실패면 ReportSheetCollapsed는 네트워크 오류 이벤트를 발행한다`() =
         runViewModelTest {
+            val progress = sampleProgress(sessionId = 99L)
+            val localRepository = FakeInterviewLocalRepository(progress)
             val interviewRepo =
                 FakeInterviewRepository(
                     resumeResult =
@@ -772,7 +774,7 @@ class HomeViewModelTest {
             val viewModel =
                 createViewModel(
                     interviewRepository = interviewRepo,
-                    progress = sampleProgress(sessionId = 99L),
+                    localRepository = localRepository,
                 )
             val globalEvents = mutableListOf<GlobalAppEvent>()
             val eventJob =
@@ -787,6 +789,7 @@ class HomeViewModelTest {
 
             assertEquals(GlobalAppEvent.ShowNetworkErrorAndExit, globalEvents.firstOrNull())
             assertEquals(listOf(99L), interviewRepo.resumeSessionIds)
+            assertEquals(progress, localRepository.progress)
             eventJob.cancel()
         }
 
@@ -820,6 +823,7 @@ class HomeViewModelTest {
     @Test
     fun `세션 확인 시 ENDED에 잔여 이용권이 있으면 Start 오버레이가 세팅된다`() =
         runViewModelTest {
+            val localRepository = FakeInterviewLocalRepository(sampleProgress(sessionId = 42L))
             val interviewRepo =
                 FakeInterviewRepository(
                     resumeResult =
@@ -828,7 +832,7 @@ class HomeViewModelTest {
             val viewModel =
                 createViewModel(
                     interviewRepository = interviewRepo,
-                    progress = sampleProgress(sessionId = 42L),
+                    localRepository = localRepository,
                 )
             viewModel.onIntent(HomeIntent.Load)
             advanceUntilIdle()
@@ -842,6 +846,16 @@ class HomeViewModelTest {
                 3,
                 (overlay as HomeSessionStartOverlayState.Start).remainingTicketCount,
             )
+            assertNull(localRepository.progress)
+
+            viewModel.onIntent(HomeIntent.ClickSessionOverlayDismiss)
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
+            advanceUntilIdle()
+
+            assertTrue(
+                viewModel.state.value.sessionStartOverlay is HomeSessionStartOverlayState.Start,
+            )
+            assertEquals(listOf(42L), interviewRepo.resumeSessionIds)
         }
 
     @Test
@@ -873,6 +887,130 @@ class HomeViewModelTest {
             assertTrue(
                 viewModel.state.value.sessionStartOverlay is HomeSessionStartOverlayState.NoTickets,
             )
+        }
+
+    @Test
+    fun `세션 종료 후 프로필을 다시 조회해 환급된 이용권을 오버레이에 반영한다`() =
+        runViewModelTest {
+            val userRepository =
+                FakeUserRepository(
+                    profileResult =
+                        Result.success(
+                            sampleUserProfile.copy(remainingTicketCount = 0),
+                        ),
+                )
+            val interviewRepository =
+                FakeInterviewRepository(
+                    resumeResult = Result.success(resumeStatus(InterviewResumeState.Ended)),
+                )
+            val viewModel =
+                createViewModel(
+                    userRepository = userRepository,
+                    interviewRepository = interviewRepository,
+                    progress = sampleProgress(sessionId = 42L),
+                )
+            viewModel.onIntent(HomeIntent.Load)
+            advanceUntilIdle()
+            assertEquals(0, viewModel.state.value.remainingTicketCount)
+            userRepository.profileResult =
+                Result.success(sampleUserProfile.copy(remainingTicketCount = 1))
+
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
+            advanceUntilIdle()
+
+            val state = viewModel.state.value
+            assertEquals(1, state.remainingTicketCount)
+            assertEquals(
+                HomeSessionStartOverlayState.Start(sampleUserProfile.name.orEmpty(), 1),
+                state.sessionStartOverlay,
+            )
+            assertEquals(listOf(42L), interviewRepository.resumeSessionIds)
+        }
+
+    @Test
+    fun `종료 처리 뒤 프로필 응답이 와도 이미 닫은 오버레이는 다시 열리지 않는다`() =
+        runViewModelTest {
+            val profileGate = CompletableDeferred<Unit>()
+            val localRepository = FakeInterviewLocalRepository(sampleProgress(sessionId = 42L))
+            val viewModel =
+                createViewModel(
+                    userRepository = FakeUserRepository(profileGate = profileGate),
+                    interviewRepository =
+                        FakeInterviewRepository(
+                            resumeResult = Result.success(resumeStatus(InterviewResumeState.Ended)),
+                        ),
+                    localRepository = localRepository,
+                )
+
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
+            advanceUntilIdle()
+            assertNull(localRepository.progress)
+            assertTrue(
+                viewModel.state.value.sessionStartOverlay is HomeSessionStartOverlayState.NoTickets,
+            )
+
+            viewModel.onIntent(HomeIntent.ClickSessionOverlayDismiss)
+            profileGate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(3, viewModel.state.value.remainingTicketCount)
+            assertNull(viewModel.state.value.sessionStartOverlay)
+        }
+
+    @Test
+    fun `재개 응답을 기다리는 동안 저장된 다른 세션은 종료 응답으로 지워지지 않는다`() =
+        runViewModelTest {
+            val gate = CompletableDeferred<Unit>()
+            val interviewRepository =
+                FakeInterviewRepository(
+                    resumeResult = Result.success(resumeStatus(InterviewResumeState.Ended)),
+                    resumeGate = gate,
+                )
+            val localRepository = FakeInterviewLocalRepository(sampleProgress(sessionId = 42L))
+            val viewModel =
+                createViewModel(
+                    interviewRepository = interviewRepository,
+                    localRepository = localRepository,
+                )
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
+            advanceUntilIdle()
+            assertEquals(listOf(42L), interviewRepository.resumeSessionIds)
+
+            val newProgress = sampleProgress(sessionId = 43L)
+            localRepository.saveProgress(newProgress)
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(newProgress, localRepository.progress)
+            assertNull(viewModel.state.value.sessionStartOverlay)
+        }
+
+    @Test
+    fun `종료된 세션의 로컬 정리가 실패하면 기록을 보존하고 전역 오류를 알린다`() =
+        runViewModelTest {
+            val progress = sampleProgress(sessionId = 42L)
+            val localRepository =
+                FakeInterviewLocalRepository(progress, IllegalStateException("저장소 오류"))
+            val interviewRepository =
+                FakeInterviewRepository(
+                    resumeResult = Result.success(resumeStatus(InterviewResumeState.Ended)),
+                )
+            val viewModel =
+                createViewModel(
+                    interviewRepository = interviewRepository,
+                    localRepository = localRepository,
+                )
+            val events = mutableListOf<GlobalAppEvent>()
+            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                GlobalErrorHandler.events.collect { events.add(it.event) }
+            }
+
+            viewModel.onIntent(HomeIntent.ReportSheetCollapsed)
+            testScheduler.runCurrent()
+
+            assertEquals(progress, localRepository.progress)
+            assertNull(viewModel.state.value.sessionStartOverlay)
+            assertEquals(listOf(GlobalAppEvent.ShowUnknownError), events)
         }
 
     @Test
@@ -1228,8 +1366,8 @@ class HomeViewModelTest {
         userRepository: UserRepository = FakeUserRepository(),
         interviewRepository: InterviewRepository = FakeInterviewRepository(),
         progress: InterviewProgress? = null,
+        localRepository: FakeInterviewLocalRepository = FakeInterviewLocalRepository(progress),
     ): HomeViewModel {
-        val localRepository = FakeInterviewLocalRepository(progress = progress)
         val clock = FakeInterviewClock()
         val calculator = InterviewTimeCalculator()
         return HomeViewModel(
@@ -1328,7 +1466,7 @@ class HomeViewModelTest {
     }
 
     private class FakeUserRepository(
-        private val profileResult: Result<UserProfile> = Result.success(sampleUserProfile),
+        var profileResult: Result<UserProfile> = Result.success(sampleUserProfile),
         private val profileGate: CompletableDeferred<Unit>? = null,
     ) : UserRepository {
         override suspend fun getUserProfile(): UserProfile {
@@ -1415,17 +1553,29 @@ class HomeViewModelTest {
     }
 
     private class FakeInterviewLocalRepository(
-        private val progress: InterviewProgress? = null,
+        var progress: InterviewProgress? = null,
+        private val clearFailure: Exception? = null,
     ) : InterviewLocalRepository {
         override suspend fun getProgress(): InterviewProgress? = progress
 
-        override suspend fun saveProgress(progress: InterviewProgress) = Unit
+        override suspend fun saveProgress(progress: InterviewProgress) {
+            this.progress = progress
+        }
 
         override suspend fun updateProgress(
             transform: (InterviewProgress) -> InterviewProgress,
         ): InterviewProgress? = null
 
-        override suspend fun clearProgress() = Unit
+        override suspend fun clearProgress() {
+            progress = null
+        }
+
+        override suspend fun clearProgressIfMatching(sessionId: Long): Boolean {
+            clearFailure?.let { throw it }
+            if (progress?.sessionId != sessionId) return false
+            progress = null
+            return true
+        }
 
         // RetainInterviewSessionForCleanupUseCase가 "매니페스트 없음 -> clearProgress" 분기를
         // 타도록 null을 반환한다.
@@ -1454,7 +1604,7 @@ class HomeViewModelTest {
 
         override suspend fun handoffUploadTask(
             task: com.dminus14.app.domain.model.InterviewUploadTask,
-        ) = Unit
+        ) = clearProgressIfMatching(task.sessionId)
 
         override suspend fun getUploadTask(uploadTaskId: String) = error("사용하지 않음")
 
@@ -1462,7 +1612,8 @@ class HomeViewModelTest {
             task: com.dminus14.app.domain.model.InterviewUploadTask,
         ) = Unit
 
-        override suspend fun getUploadTasks() = error("사용하지 않음")
+        override suspend fun getUploadTasks() =
+            emptyList<com.dminus14.app.domain.model.InterviewUploadTask>()
 
         override suspend fun deleteUploadTask(uploadTaskId: String) = Unit
 

@@ -30,7 +30,7 @@ internal class HomeSessionHandler(
     private var pendingSessionId: Long? = null
     private var checkJob: Job? = null
 
-    fun checkSession() {
+    fun checkSession(reloadHome: () -> Unit) {
         checkJob?.cancel()
         checkJob =
             context.launch {
@@ -51,7 +51,7 @@ internal class HomeSessionHandler(
                             }
 
                             InterviewResumeState.Ended -> {
-                                context.dispatch(HomeMutation.SessionAbsent)
+                                clearEndedSession(sessionId, reloadHome)
                             }
 
                             is InterviewResumeState.Unknown -> {
@@ -62,6 +62,24 @@ internal class HomeSessionHandler(
                     onFailure = { context.handleHomeFailure(it) },
                 )
             }
+    }
+
+    private suspend fun clearEndedSession(
+        sessionId: Long,
+        reloadHome: () -> Unit,
+    ) {
+        val cleared =
+            runCatching { retainInterviewSessionForCleanupUseCase(sessionId) }
+                .rethrowHomeCancellation()
+                .getOrElse { error ->
+                    context.handleHomeFailure(error)
+                    return
+                }
+        if (!cleared) return
+
+        pendingSessionId = null
+        context.dispatch(HomeMutation.SessionAbsent)
+        reloadHome()
     }
 
     fun startSession() {
