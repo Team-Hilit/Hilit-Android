@@ -1181,7 +1181,7 @@ class HomeViewModelTest {
     // ---- ClickSessionResume (이어서 진행) ----
 
     @Test
-    fun `동결된 면접은 홈에서 조회하고 이어서 진행을 두 번 눌러도 재개를 한 번 확정한다`() =
+    fun `홈에서 재개를 한 번만 확정하고 리포트 갱신 후에도 재시작을 막는다`() =
         runViewModelTest {
             val gate = CompletableDeferred<Unit>()
             val repo =
@@ -1213,6 +1213,13 @@ class HomeViewModelTest {
             assertTrue(repo.confirmCalls.isEmpty())
             assertTrue(repo.abandonCalls.isEmpty())
             repeat(2) { viewModel.onIntent(HomeIntent.ClickSessionResume) }
+            viewModel.onIntent(HomeIntent.Load)
+            advanceUntilIdle()
+            assertFalse(viewModel.state.value.isLoading)
+            repeat(2) { viewModel.onIntent(HomeIntent.ClickSessionStart) }
+            assertEquals(card, viewModel.state.value.sessionStartOverlay)
+            assertTrue(repo.abandonCalls.isEmpty())
+
             gate.complete(Unit)
             advanceUntilIdle()
 
@@ -1223,6 +1230,38 @@ class HomeViewModelTest {
             )
             assertNull(viewModel.state.value.sessionStartOverlay)
             job.cancel()
+        }
+
+    @Test
+    fun `재개 전 로컬 진행 상태 조회가 실패하면 로딩을 끝내고 서버 재개를 호출하지 않는다`() =
+        runViewModelTest {
+            val repo =
+                FakeInterviewRepository(
+                    resumeResult = Result.success(resumeStatus(InterviewResumeState.Resumable)),
+                )
+            val progress = progressWithElapsed(777L, 60_000L).copy(isFrozen = true)
+            val localRepository = FakeInterviewLocalRepository(progress)
+            val viewModel =
+                createViewModel(
+                    interviewRepository = repo,
+                    localRepository = localRepository,
+                )
+            val globalEvents = mutableListOf<GlobalAppEvent>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                GlobalErrorHandler.events.collect { globalEvents += it.event }
+            }
+            viewModel.onIntent(HomeIntent.Load)
+            advanceUntilIdle()
+            val card = viewModel.state.value.sessionStartOverlay
+            assertTrue(card is HomeSessionStartOverlayState.InProgress)
+
+            localRepository.progressReadFailure = IllegalStateException("synthetic read failure")
+            viewModel.onIntent(HomeIntent.ClickSessionResume)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.isLoading)
+            assertTrue(repo.confirmCalls.isEmpty())
+            assertEquals(listOf(GlobalAppEvent.ShowUnknownError), globalEvents)
         }
 
     @Test
@@ -1697,7 +1736,12 @@ class HomeViewModelTest {
         var progress: InterviewProgress? = null,
         private val clearFailure: Exception? = null,
     ) : InterviewLocalRepository {
-        override suspend fun getProgress(): InterviewProgress? = progress
+        var progressReadFailure: Exception? = null
+
+        override suspend fun getProgress(): InterviewProgress? {
+            progressReadFailure?.let { throw it }
+            return progress
+        }
 
         override suspend fun saveProgress(progress: InterviewProgress) {
             this.progress = progress

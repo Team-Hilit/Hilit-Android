@@ -52,6 +52,12 @@ class InterviewBackgroundTest {
             assertFalse(checkNotNull(fixture.progress).isFrozen)
 
             fixture.clockDeltaMillis += 60_000L
+            val beforeFinalize = fixture.progress
+            vm.onIntent(InterviewIntent.Recovery.ReportNetworkDisconnected)
+            runCurrent()
+            assertEquals(beforeFinalize, fixture.progress)
+            assertEquals(listOf(InterviewEffect.FreezeMedia), effects)
+
             vm.onIntent(InterviewIntent.Turn.ReportRecordingSegmentFinalized(segment))
             repeat(2) { vm.onIntent(InterviewIntent.Recovery.BackgroundRecordingStopped) }
             runCurrent()
@@ -59,6 +65,10 @@ class InterviewBackgroundTest {
             val saved = checkNotNull(fixture.progress)
             assertTrue(saved.isFrozen)
             assertEquals(60_000L, saved.elapsedAtCheckpointMillis)
+            assertEquals(
+                InterviewTimeCalculator.RETENTION_MILLIS - 60_000L,
+                saved.retentionRemainingAtCheckpointMillis,
+            )
             assertEquals(
                 InterviewMediaFinalizeState.FINALIZED,
                 fixture.manifests

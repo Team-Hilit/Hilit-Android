@@ -243,6 +243,10 @@ class InterviewViewModelFinalizationTest {
 
             enterFinalization(viewModel, fixture, reportGenerating = false)
             repeat(2) { viewModel.onIntent(InterviewIntent.Recovery.ReportAppBackgrounded) }
+            runCurrent()
+            assertEquals(1, effects.count { it == InterviewEffect.StopPlayback })
+            assertEquals(1, effects.count { it == InterviewEffect.StopRecordingSegment })
+
             viewModel.onIntent(InterviewIntent.Finalization.ReportWrapUpPlaybackCompleted)
             runCurrent()
             assertEquals(1, effects.count { it == InterviewEffect.StopPlayback })
