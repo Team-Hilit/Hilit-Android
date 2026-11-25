@@ -85,14 +85,14 @@ class HomeViewModel
             loadJob =
                 context.launch {
                     if (!loadProfile()) return@launch
-                    // 목록 조회 실패는 기존 홈 계약대로 빈 목록으로 표시한다.
-                    val reports =
+                    val reportList =
                         getInterviewReportListUseCase()
                             .rethrowHomeCancellation()
-                            .getOrNull()
-                            ?.reports
-                            ?.map { it.toHomeReportItem() }
-                            .orEmpty()
+                            .getOrElse { error ->
+                                context.handleHomeFailure(error)
+                                return@launch
+                            }
+                    val reports = reportList.reports.map { it.toHomeReportItem() }
                     context.dispatch(HomeMutation.ReportsLoaded(reports))
                 }
         }

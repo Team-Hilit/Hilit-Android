@@ -115,24 +115,30 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `리포트가 빈 목록이면 reports와 expandedReportIds가 모두 비어 있다`() =
+    fun `재조회가 빈 목록으로 성공하면 기존 리포트와 펼침 상태를 비운다`() =
         runViewModelTest {
-            val viewModel =
-                createViewModel(
-                    interviewRepository =
-                        FakeInterviewRepository(
-                            reportListResult =
-                                Result.success(InterviewReportList(reports = emptyList())),
-                        ),
+            val repository =
+                FakeInterviewRepository(
+                    reportListResult = Result.success(InterviewReportList(listOf(reportItem(1L)))),
                 )
-
+            val viewModel = createViewModel(interviewRepository = repository)
             viewModel.onIntent(HomeIntent.Load)
             advanceUntilIdle()
+            assertEquals(setOf("1"), viewModel.state.value.expandedReportIds)
+
+            val globalEvents = mutableListOf<GlobalAppEvent>()
+            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                GlobalErrorHandler.events.collect { globalEvents.add(it.event) }
+            }
+            repository.reportListResult = Result.success(InterviewReportList(emptyList()))
+            viewModel.onIntent(HomeIntent.Load)
+            testScheduler.runCurrent()
 
             val state = viewModel.state.value
             assertTrue(state.reports.isEmpty())
             assertTrue(state.expandedReportIds.isEmpty())
             assertFalse(state.isLoading)
+            assertTrue(globalEvents.isEmpty())
         }
 
     @Test
@@ -189,7 +195,39 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `리포트 조회가 실패해도 빈 목록으로 처리되고 Effect는 발행되지 않는다`() =
+    fun `리포트 재조회가 실패하면 직전 목록과 펼친 카드를 유지하고 전역 오류를 한 번 알린다`() =
+        runViewModelTest {
+            val repository =
+                FakeInterviewRepository(
+                    reportListResult =
+                        Result.success(InterviewReportList(listOf(reportItem(1L), reportItem(2L)))),
+                )
+            val viewModel = createViewModel(interviewRepository = repository)
+            viewModel.onIntent(HomeIntent.Load)
+            advanceUntilIdle()
+            viewModel.onIntent(HomeIntent.ClickReportExpand("2"))
+            val previous = viewModel.state.value
+            assertEquals(listOf("1", "2"), previous.reports.map { it.id })
+            assertEquals(setOf("1", "2"), previous.expandedReportIds)
+
+            val globalEvents = mutableListOf<GlobalAppEvent>()
+            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                GlobalErrorHandler.events.collect { globalEvents.add(it.event) }
+            }
+            repository.reportListResult =
+                Result.failure(NetworkUnavailableException(errCode = "NETWORK_UNAVAILABLE"))
+            viewModel.onIntent(HomeIntent.Load)
+            testScheduler.runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(previous.reports, state.reports)
+            assertEquals(previous.expandedReportIds, state.expandedReportIds)
+            assertFalse(state.isLoading)
+            assertEquals(listOf(GlobalAppEvent.ShowNetworkErrorAndExit), globalEvents)
+        }
+
+    @Test
+    fun `첫 리포트 조회가 실패하면 프로필과 초기 빈 목록을 유지하고 로딩을 끝낸다`() =
         runViewModelTest {
             val viewModel =
                 createViewModel(
