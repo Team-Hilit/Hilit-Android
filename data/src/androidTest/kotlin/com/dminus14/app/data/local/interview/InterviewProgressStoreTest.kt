@@ -7,7 +7,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.dminus14.app.domain.model.InterviewProgress
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -37,6 +39,30 @@ class InterviewProgressStoreTest {
 
             store.clear()
             assertNull(store.read())
+        }
+
+    @Test
+    fun `종료된 세션과 저장된 세션이 일치할 때만 진행 상태를 삭제한다`() =
+        runTest {
+            val store = InterviewProgressStore(isolatedContext())
+            val progress =
+                InterviewProgress(
+                    sessionId = 14L,
+                    retentionDeadlineEpochMillis = 86_400_000L,
+                    retentionRemainingAtCheckpointMillis = 43_200_000L,
+                    retentionCheckpointElapsedRealtimeMillis = null,
+                    timerStartedAtEpochMillis = null,
+                    elapsedAtCheckpointMillis = null,
+                    checkpointedAtEpochMillis = null,
+                    elapsedCheckpointElapsedRealtimeMillis = null,
+                )
+            store.write(progress)
+
+            assertFalse(store.clearIfMatching(13L))
+            assertEquals(progress, store.read())
+            assertTrue(store.clearIfMatching(14L))
+            assertNull(store.read())
+            assertFalse(store.clearIfMatching(14L))
         }
 
     @Test

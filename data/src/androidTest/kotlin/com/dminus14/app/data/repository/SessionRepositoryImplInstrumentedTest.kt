@@ -8,8 +8,8 @@ import com.dminus14.app.data.local.datasource.LocalDataSourceImpl
 import com.dminus14.app.data.local.datasource.PreferenceEdit
 import com.dminus14.app.data.remote.auth.AccessTokenProvider
 import com.dminus14.app.data.remote.datasource.AuthRemoteDataSource
-import com.dminus14.app.data.remote.dto.SocialLoginResponseDto
-import com.dminus14.app.data.remote.dto.TokenRefreshResponseDto
+import com.dminus14.app.data.remote.dto.auth.SocialLoginResponseDto
+import com.dminus14.app.data.remote.dto.auth.TokenRefreshResponseDto
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
